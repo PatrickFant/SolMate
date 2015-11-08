@@ -31,7 +31,7 @@
 /* ============================================================================ */
 
 /******************************************************************************/
-/* lnk_msp430f5229.cmd - LINKER COMMAND FILE FOR LINKING MSP430F5229 PROGRAMS     */
+/* lnk_msp430f5529.cmd - LINKER COMMAND FILE FOR LINKING MSP430F5529 PROGRAMS     */
 /*                                                                            */
 /*   Usage:  lnk430 <obj files...>    -o <out file> -m <map file> lnk.cmd     */
 /*           cl430  <src files...> -z -o <out file> -m <map file> lnk.cmd     */
@@ -57,6 +57,7 @@ MEMORY
     PERIPHERALS_8BIT        : origin = 0x0010, length = 0x00F0
     PERIPHERALS_16BIT       : origin = 0x0100, length = 0x0100
     RAM                     : origin = 0x2400, length = 0x2000
+    USBRAM                  : origin = 0x1C00, length = 0x0800
     INFOA                   : origin = 0x1980, length = 0x0080
     INFOB                   : origin = 0x1900, length = 0x0080
     INFOC                   : origin = 0x1880, length = 0x0080
@@ -217,10 +218,10 @@ SECTIONS
     TIMER1_A1    : { * ( .int48 ) } > INT48 type = VECT_INIT
     TIMER1_A0    : { * ( .int49 ) } > INT49 type = VECT_INIT
     DMA          : { * ( .int50 ) } > INT50 type = VECT_INIT
-    .int51       : {}               > INT51
+    USB_UBM      : { * ( .int51 ) } > INT51 type = VECT_INIT
     TIMER0_A1    : { * ( .int52 ) } > INT52 type = VECT_INIT
     TIMER0_A0    : { * ( .int53 ) } > INT53 type = VECT_INIT
-    ADC10        : { * ( .int54 ) } > INT54 type = VECT_INIT
+    ADC12        : { * ( .int54 ) } > INT54 type = VECT_INIT
     USCI_B0      : { * ( .int55 ) } > INT55 type = VECT_INIT
     USCI_A0      : { * ( .int56 ) } > INT56 type = VECT_INIT
     WDT          : { * ( .int57 ) } > INT57 type = VECT_INIT
@@ -236,5 +237,5 @@ SECTIONS
 /* Include peripherals memory map                                           */
 /****************************************************************************/
 
--l msp430f5229.cmd
+-l msp430f5529.cmd
 

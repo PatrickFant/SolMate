@@ -12,8 +12,8 @@
 #define UCA0IVTX 0x4
 
 // Maximum buffer sizes in bytes for sending and receiving
-#define MAX_RX_BUFFER 65
-#define MAX_TX_BUFFER 65
+#define MAX_RX_BUFFER 97
+#define MAX_TX_BUFFER 97
 
 // Buffers for sending and receiving data //
 char rx_buffer[MAX_RX_BUFFER]; // The receive buffer
@@ -31,6 +31,23 @@ enum UartState {
 };
 volatile char uart_state;
 
+// Results that the cell module can send back to us
+#define LENGTH_OK 4 // length of result_OK
+#define LENGTH_ERROR 7 // length of result_ERROR
+#define LENGTH_INPUT 4
+const char result_OK[] = "OK\r\n";
+const char result_ERROR[] = "ERROR\r\n";
+const char result_INPUT[] = "\r\n> ";
+volatile unsigned int result_OK_counter; // This gets incremented when a received character matches result_OK
+volatile unsigned int result_ERROR_counter;
+volatile unsigned int result_INPUT_counter;
+
+// Holds a pointer to the function to call when a command is done
+void (*completion_handler)(int result);
+
+// Holds the result of the most recent command (-1 means undefined/no result, 0 means OK, 1 means error)
+//volatile int return_result;
+
 // Initializes the msp's UART on the USCI A0
 void uart_initialize()
 {
@@ -38,6 +55,10 @@ void uart_initialize()
 	rx_buffer_index = 0;
 	tx_buffer_index = 0;
 	uart_state = UartStateIdle;
+	result_OK_counter = 0;
+	result_ERROR_counter = 0;
+	result_INPUT_counter = 0;
+//	return_result = UartResultUndefined;
 
 	// Enable uart mode on the correct pins
 	P3SEL |= UART_PIN_RX | UART_PIN_TX;
@@ -58,9 +79,15 @@ void uart_initialize()
 	UCA0IFG = 0;
 }
 
+// Sets the completion handler function
+void uart_set_completion_handler(void (*handler)(int))
+{
+	completion_handler = handler;
+}
+
 // The USCIA0 interrupt (called for receiving and transmitting)
 #pragma vector=USCI_A0_VECTOR
-interrupt void uart_interrupt_handler()
+__interrupt void uart_interrupt_handler()
 {
 	// Check the interrupt flag to see if this is rx or tx //
 	// We are reading from UCA0IV, which automatically resets the interrupt flag
@@ -70,8 +97,57 @@ interrupt void uart_interrupt_handler()
 		{
 			if(rx_buffer_index < MAX_RX_BUFFER) // Make sure we don't read more bytes than the buffer can hold
 			{
-				rx_buffer[rx_buffer_index] = UCA0RXBUF; // Copy the received byte into buffer
+				char rx_byte = UCA0RXBUF; // Get the received byte
+				rx_buffer[rx_buffer_index] = rx_byte; // Copy the received byte into buffer
 				rx_buffer_index++; // Increment the buffer index
+
+				// Check if we got OK
+				if(rx_byte == result_OK[result_OK_counter])
+				{
+					if(++result_OK_counter == LENGTH_OK) // We have gotten "OK\r\n"
+					{
+						uart_state = UartStateIdle;
+						completion_handler(UartResultOK);
+						return;
+					}
+				}
+				else // wrong character, start over
+					if(rx_byte == result_OK[0])
+						result_OK_counter = 1; // start of new (possible) match
+					else
+						result_OK_counter = 0; // no match at all right now
+
+				// Check if we got ERROR
+				if(rx_byte == result_ERROR[result_ERROR_counter])
+				{
+					if(++result_ERROR_counter == LENGTH_ERROR) // we have "ERROR\r\n"
+					{
+						uart_state = UartStateIdle;
+						completion_handler(UartResultError);
+						return;
+					}
+				}
+				else // wrong character, start over
+					if(rx_byte == result_ERROR[0])
+						result_ERROR_counter = 1; // start of new (possible) match
+					else
+						result_ERROR_counter = 0; // no match at all right now
+
+				// Check if we got an input character "\r\n> "
+				if(rx_byte == result_INPUT[result_INPUT_counter])
+				{
+					if(++result_INPUT_counter == LENGTH_INPUT) // matched "\r\n> "
+					{
+						uart_state = UartStateIdle;
+						completion_handler(UartResultInput);
+						return;
+					}
+				}
+				else // wrong character, start over
+					if(rx_byte == result_INPUT[0])
+						result_INPUT_counter = 1; // start of new (possible) match
+					else
+						result_INPUT_counter = 0; // no match at all right now
 			}
 
 			break;
@@ -88,8 +164,6 @@ interrupt void uart_interrupt_handler()
 				UCA0TXBUF = tx_byte; // Send the byte
 				tx_buffer_index++; // Increment the buffer index
 			}
-			else // *** this needs to be moved to when the ending sequence is received ***
-				uart_state = UartStateIdle; // We are done transmitting
 
 			break;
 		}
@@ -104,6 +178,11 @@ void rx_buffer_reset()
 
 	// Reset current index
 	rx_buffer_index = 0;
+
+	// reset results counters
+	result_OK_counter = 0;
+	result_ERROR_counter = 0;
+	result_INPUT_counter = 0;
 }
 
 // Clears out the transmit buffer and sets the buffer index to zero
@@ -138,4 +217,13 @@ void uart_send_str(const char *send_str)
 	// Put the first byte into the transmit buffer (this starts the process)
 	tx_buffer_index = 1; // Interrupt handler will start at the second byte (index 1)
 	UCA0TXBUF = tx_buffer[0];
+}
+
+// Returns 1 if the uart is currently sending a command, and 0 if it is not
+int uart_command_in_progress()
+{
+	if(uart_state == UartStateIdle)
+		return 0;
+	else
+		return 1;
 }

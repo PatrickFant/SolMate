@@ -13,7 +13,7 @@
 #define UART_PIN_TX BIT3 // P3.3
 
 // Set the speed here
-#define BAUDSPEED_14400 // 14400 b/s
+#define BAUDSPEED_9600
 
 // Values for 9600 baud
 #if defined BAUDSPEED_9600
@@ -27,10 +27,24 @@
 #define BAUDSPEED_MCTL 0x91
 #endif
 
+// Return possibilities
+enum ReturnResult {
+	UartResultUndefined = -1,
+	UartResultOK = 0,
+	UartResultError = 1,
+	UartResultInput = 2
+};
+
 // Functions //
 
 // Initialize the USCI module in uart mode
 void uart_initialize();
+
+// Set the function to call when a command is finished
+void uart_set_completion_handler(void (*)(int));
+
+// Is the system currently sending a command?
+int uart_command_in_progress();
 
 // Send a string over the uart
 void uart_send_str(const char *send_str);

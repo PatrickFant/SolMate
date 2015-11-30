@@ -45,9 +45,6 @@ volatile unsigned int result_INPUT_counter;
 // Holds a pointer to the function to call when a command is done
 void (*completion_handler)(int result);
 
-// Holds the result of the most recent command (-1 means undefined/no result, 0 means OK, 1 means error)
-//volatile int return_result;
-
 // Initializes the msp's UART on the USCI A0
 void uart_initialize()
 {
@@ -58,7 +55,6 @@ void uart_initialize()
 	result_OK_counter = 0;
 	result_ERROR_counter = 0;
 	result_INPUT_counter = 0;
-//	return_result = UartResultUndefined;
 
 	// Enable uart mode on the correct pins
 	P3SEL |= UART_PIN_RX | UART_PIN_TX;

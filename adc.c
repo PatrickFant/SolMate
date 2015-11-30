@@ -5,7 +5,7 @@
  */
 
 // Set up the analog to digital converter
-void adc_initialize(const char *ptr_water_depth, const char *ptr_battery_voltage)
+void adc_initialize()
 {
 	P6SEL |= ADC_PIN_WATERDEPTH | ADC_PIN_BAT_CHARGE; // Set up pins
 

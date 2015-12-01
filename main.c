@@ -72,18 +72,18 @@ int main(void)
     // Wait a bit
     __delay_cycles(1048576); // 1 second
 
-    // Start conversion
-    adc_start_conversion();
-
     // Enable watchdog interrupts and interrupts in general
     SFRIE1 |= WDTIE;
     _BIS_SR(GIE);
 
+    // Start conversion
+	adc_start_conversion();
+
     // Send an AT first
     uart_send_str("AT\n");
 
-	// Start up watchdog timer
-	WDTCTL = WDTPW | WDTSSEL__ACLK | WDTTMSEL | WDTIS_5; // about 1/4 second interval
+    // Start up watchdog timer
+    WDTCTL = WDTPW | WDTSSEL__ACLK | WDTTMSEL | WDTIS_5; // about 1/4 second interval
 
 	return 0;
 }
@@ -105,7 +105,7 @@ __interrupt void port1_interrupt_handler()
 __interrupt void watchdog_interrupt_handler()
 {
 	// Check water depth
-	if(floatswitch_active || water_depth > 70) // WATERRR -- the values go from 0 to 255
+	if(floatswitch_active || water_depth > 70) // water depth values go from 0 to 255
 	{
 		if(battery_charge > 100) // around 40% (100 out of 255)
 			pump_active = 1;
@@ -116,7 +116,6 @@ __interrupt void watchdog_interrupt_handler()
 			if(water_depth > 127)
 			{
 				// There is not enough charge and too much water, notify over text
-
 				if(sent_text == 0 && command_state == CommandStateReadyForCMGS)
 				{
 					P4OUT &= ~LED_MSP_2; // green LED off
@@ -162,30 +161,32 @@ void uart_completion_handler(int result)
 {
 	switch(command_state)
 	{
-		case CommandStateSendingAT:
+		case CommandStateSendingAT: // Got a response after sending AT
 		{
-			if(result == UartResultOK) // Response after sending AT
+			if(result == UartResultOK)
 			{
 				// Send cmgf
+				// This puts the cell module into SMS mode, as opposed to data mode
 				command_state = CommandStateSendingCMGF;
 				uart_send_str("AT+CMGF=1\n");
 			}
 			break;
 		}
 
-		case CommandStateSendingCMGF: // Response after sending CMGF
+		case CommandStateSendingCMGF: // Got a response after sending CMGF
 		{
 			if(result == UartResultOK)
 			{
 				P4OUT |= LED_MSP_2; // green LED on
 				P1OUT &= ~LED_MSP; // red LED off
 
+				// We are now ready to send a text whenever the system needs to
 				command_state = CommandStateReadyForCMGS;
 			}
 			break;
 		}
 
-		case CommandStateSendingCMGS: // Response after sending CMGS
+		case CommandStateSendingCMGS: // Got a response after sending CMGS
 		{
 			if(result == UartResultInput)
 			{
@@ -196,13 +197,13 @@ void uart_completion_handler(int result)
 			break;
 		}
 
-		case CommandStateSendingText: // Response after sending the text
+		case CommandStateSendingText: // Got a response after sending the text
 		{
 			if(result == UartResultOK)
 			{
 				P4OUT |= LED_MSP_2; // green LED on
 				P1OUT &= ~LED_MSP; // red LED off
-				sent_text = 1;
+				sent_text = 1; // Do not send the text again (this is for testing purposes--to send another text you have to restart the MSP)
 			}
 		}
 	}

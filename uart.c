@@ -71,12 +71,12 @@ void uart_initialize()
 	UCA0IE |= UCRXIE | UCTXIE;
 
 	// Clear all usci interrupt flags (this prevents the usual behavior where
-	// the transmit interrupt is called as soon as interrupts are enabled (once))
+	// the transmit interrupt is called (one time) as soon as interrupts are enabled)
 	UCA0IFG = 0;
 }
 
 // Sets the completion handler function
-void uart_set_completion_handler(void (*handler)(int))
+void uart_set_completion_handler(void (*handler)(int result))
 {
 	completion_handler = handler;
 }
@@ -97,13 +97,18 @@ __interrupt void uart_interrupt_handler()
 				rx_buffer[rx_buffer_index] = rx_byte; // Copy the received byte into buffer
 				rx_buffer_index++; // Increment the buffer index
 
+				// The following string-checking code is a limited version of the KMP algorithm. It doesn't
+				// use a pre-computed prefix array to match the strings and account for recurring patterns.
+				// If one of the responses we want to match ends up requiring a precomputed prefix then we'll
+				// need to change this code to run the full KMP algorithm.
+
 				// Check if we got OK
 				if(rx_byte == result_OK[result_OK_counter])
 				{
 					if(++result_OK_counter == LENGTH_OK) // We have gotten "OK\r\n"
 					{
-						uart_state = UartStateIdle;
-						completion_handler(UartResultOK);
+						uart_state = UartStateIdle; // Done running a command
+						completion_handler(UartResultOK); // Call the completion handler
 						return;
 					}
 				}
@@ -118,8 +123,8 @@ __interrupt void uart_interrupt_handler()
 				{
 					if(++result_ERROR_counter == LENGTH_ERROR) // we have "ERROR\r\n"
 					{
-						uart_state = UartStateIdle;
-						completion_handler(UartResultError);
+						uart_state = UartStateIdle; // Done running a command
+						completion_handler(UartResultError); // Call the completion handler
 						return;
 					}
 				}
@@ -134,8 +139,8 @@ __interrupt void uart_interrupt_handler()
 				{
 					if(++result_INPUT_counter == LENGTH_INPUT) // matched "\r\n> "
 					{
-						uart_state = UartStateIdle;
-						completion_handler(UartResultInput);
+						uart_state = UartStateIdle; // Done running a command
+						completion_handler(UartResultInput); // Call the completion handler
 						return;
 					}
 				}

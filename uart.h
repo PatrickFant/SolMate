@@ -41,7 +41,7 @@ enum ReturnResult {
 void uart_initialize();
 
 // Set the function to call when a command is finished
-void uart_set_completion_handler(void (*)(int));
+void uart_set_completion_handler(void (*handler)(int result));
 
 // Is the system currently sending a command?
 int uart_command_in_progress();

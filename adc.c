@@ -10,7 +10,7 @@ void adc_initialize()
 	P6SEL |= ADC_PIN_WATERDEPTH | ADC_PIN_BAT_CHARGE; // Set up pins
 
 	// Set up ADC //
-	ADC12CTL0 = ADC12ON | ADC12MSC | ADC12SHT0_2; // Turn on ADC
+	ADC12CTL0 = ADC12ON | ADC12MSC | ADC12SHT0_2; // Turn on ADC, enable multiple samples, set speed
 	ADC12CTL1 = ADC12SHP | ADC12CONSEQ_1; // Sequence-of-channels mode (no repeat)
 	ADC12CTL2 = ADC12RES_0; // 8 bit resolution
 

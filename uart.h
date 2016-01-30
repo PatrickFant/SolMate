@@ -8,10 +8,6 @@
 #ifndef UART_H_
 #define UART_H_
 
-// Pins for receive (rx) and transmit (tx)
-#define UART_PIN_RX BIT4 // P3.4
-#define UART_PIN_TX BIT3 // P3.3
-
 // Set the speed here
 #define BAUDSPEED_9600
 
@@ -35,13 +31,28 @@ enum ReturnResult {
 	UartResultInput = 2
 };
 
+// States of the system
+enum CommandState {
+	CommandStateSendingAT,
+	CommandStateGoToSMSMode,
+	CommandStateIdle,
+	CommandStatePrepareWarningSMS,
+	CommandStateSendWarningSMS
+};
+volatile char uart_command_state; // Controls what commands are sent to the gsm module
+
+// Flags that are set when a UART command is completed (the main loop in main.c checks this
+// to see when it should act)
+volatile char uart_command_has_completed;
+volatile int uart_command_result;
+
+// Only send text once
+volatile char sent_text;
+
 // Functions //
 
 // Initialize the USCI module in uart mode
 void uart_initialize();
-
-// Set the function to call when a command is finished
-void uart_set_completion_handler(void (*handler)(int result));
 
 // Is the system currently sending a command?
 int uart_command_in_progress();

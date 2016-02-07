@@ -7,19 +7,6 @@
  *
  */
 
-// For some reason these constants are not defined in the msp header file, but they are on
-// page 967 of the MSP430x5 and MSP430x6 manual. But more likely I can't find them
-#define UCA0IVRX 0x2
-#define UCA0IVTX 0x4
-
-// Maximum buffer sizes in bytes for sending and receiving
-#define MAX_RX_BUFFER 97
-#define MAX_TX_BUFFER 97
-
-// Buffers for sending and receiving data //
-char rx_buffer[MAX_RX_BUFFER]; // The receive buffer
-char tx_buffer[MAX_TX_BUFFER]; // The transmit buffer
-
 // To keep track of the current index of the buffers
 volatile unsigned int rx_buffer_index;
 volatile unsigned int tx_buffer_index;
@@ -33,9 +20,6 @@ enum UartState {
 volatile char uart_state;
 
 // Results that the cell module can send back to us
-#define LENGTH_OK 4 // length of result_OK
-#define LENGTH_ERROR 7 // length of result_ERROR
-#define LENGTH_INPUT 4
 const char result_OK[] = "OK\r\n";
 const char result_ERROR[] = "ERROR\r\n";
 const char result_INPUT[] = "\r\n> ";
@@ -44,7 +28,7 @@ const char *result_ERROR_ptr;
 const char *result_INPUT_ptr;
 
 // Called when a uart command is done
-void completion_handler(int result);
+//void completion_handler(int result);
 
 // Initializes the msp's UART on the USCI A0
 void uart_initialize()
@@ -88,7 +72,7 @@ __interrupt void uart_interrupt_handler()
 	// We are reading from UCA0IV, which automatically resets the interrupt flag
 	switch(UCA0IV)
 	{
-		case UCA0IVRX: // Received a byte
+		case USCI_UCRXIFG: // Received a byte
 		{
 //			TA0R = 0;
 //			TA0CTL |= MC__CONTINUOUS;
@@ -99,7 +83,25 @@ __interrupt void uart_interrupt_handler()
 
 				char rx_byte = UCA0RXBUF; // Get the received byte
 				rx_buffer[rx_buffer_index] = rx_byte; // Copy the received byte into buffer
-				rx_buffer_index++; // Increment the buffer index
+
+				// For unsolicited messages
+				if(uart_command_state == CommandStateIdle)
+				{
+					// Check for \r\n
+					if(rx_buffer[rx_buffer_index - 1] == '\r' && rx_byte == '\n')
+					{
+						P4OUT &= ~LED_MSP_2; // green LED off
+						P1OUT |= LED_MSP; // red LED on
+
+						// Stop here and go to main loop to decode the received message
+						uart_state = UartStateIdle;
+						UCA0IE &= ~UCRXIE; // Turn off receive interrupts for now
+						uart_command_has_completed = 1;
+						uart_command_state = CommandStateUnsolicitedMsg; // Going to process it in the main loop
+						LPM0_EXIT; // Turn on cpu
+						return;
+					}
+				}
 
 				// The following string-checking code is a limited version of the KMP algorithm. It doesn't
 				// use a pre-computed prefix array to match the strings and account for recurring patterns.
@@ -163,12 +165,15 @@ __interrupt void uart_interrupt_handler()
 						result_INPUT_ptr = result_INPUT + 1; // start of new (possible) match
 					else
 						result_INPUT_ptr = result_INPUT; // no match at all right now
+
+				// Increment the buffer index
+				rx_buffer_index++;
 			}
 
 			break;
 		}
 
-		case UCA0IVTX: // Ready to transmit a new byte
+		case USCI_UCTXIFG: // Ready to transmit a new byte
 		{
 			// Get the desired byte to send
 			char tx_byte = tx_buffer[tx_buffer_index];
@@ -212,7 +217,8 @@ void tx_buffer_reset()
 
 // Send a character array to the cell module while also recording the
 // response
-void uart_send_str(const char *send_str)
+//void uart_send_str(const char *send_str)
+void uart_send_command()
 {
 	// Stop if an operation is already happening
 	if(uart_state != UartStateIdle)
@@ -221,12 +227,11 @@ void uart_send_str(const char *send_str)
 	// Reset the buffers, flags
 	uart_command_has_completed = 0;
 	uart_command_result = UartResultUndefined;
-	tx_buffer_reset();
 	rx_buffer_reset();
 
 	// Copy send_str to tx_buffer
-	unsigned int send_str_len = strlen(send_str);
-	strncpy(tx_buffer, send_str, send_str_len);
+//	unsigned int send_str_len = strlen(send_str);
+//	strncpy(tx_buffer, send_str, send_str_len);
 
 	// Don't allow sending strings until this one is finished
 	uart_state = UartStateBusy;
@@ -234,6 +239,14 @@ void uart_send_str(const char *send_str)
 	// Put the first byte into the transmit buffer (this starts the process)
 	tx_buffer_index = 1; // Interrupt handler will start at the second byte (index 1)
 	UCA0TXBUF = tx_buffer[0];
+}
+
+// Go into idle mode
+void uart_enter_idle_mode()
+{
+	uart_command_state = CommandStateIdle;
+	uart_command_has_completed = 0; // In general, reset (zero) this flag if uart_send_str(..) is not called
+	rx_buffer_reset(); // Clear rx buffer (make room for messages from the module)
 }
 
 // Returns 1 if the uart is currently sending a command, and 0 if it is not

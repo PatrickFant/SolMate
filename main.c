@@ -2,6 +2,7 @@
 #include "definitions.h"
 #include "uart.h"
 #include "adc.h"
+#include <string.h>
 
 /*
  * main.c
@@ -13,8 +14,9 @@ volatile char water_depth; // Contains water depth value
 volatile char battery_charge; // Contains battery charge value
 volatile char pump_active; // Controls the water pump (0 = off, 1 = on)
 
-// Called when a uart command is done
-//void uart_completion_handler(int result);
+// 'Scratch' space for putting together UART commands
+#define CMD_BUFFER_LENGTH 31
+char uart_command_buffer[CMD_BUFFER_LENGTH];
 
 int main(void)
 {
@@ -26,13 +28,12 @@ int main(void)
     water_depth = 0;
     battery_charge = 0;
     pump_active = 0;
+    memset(uart_command_buffer, '\0', CMD_BUFFER_LENGTH);
 
     // Set up button
-    P1DIR &= ~INPUT_FLOATSWITCH;
-    P1REN |= INPUT_FLOATSWITCH;
-    P1OUT |= INPUT_FLOATSWITCH;
-    P1IES |= INPUT_FLOATSWITCH;
-    P1IE |= INPUT_FLOATSWITCH;
+    P6DIR &= ~INPUT_FLOATSWITCH;
+    P6REN |= INPUT_FLOATSWITCH;
+    P6OUT |= INPUT_FLOATSWITCH;
 
     // Set up pump LED
     P6DIR |= LED_PUMP;
@@ -61,7 +62,10 @@ int main(void)
     // Send an AT first
 	P1OUT |= LED_MSP;
 	P4OUT &= ~LED_MSP_2;
-    uart_send_str("AT\n");
+
+	tx_buffer_reset();
+    strcpy(tx_buffer, "AT\n");
+    uart_send_command();
 
     // Stop watchdog timer
     WDTCTL = WDTPW | WDTHOLD;
@@ -91,7 +95,9 @@ int main(void)
 						// Send cmgf
 						// This puts the cell module into SMS mode, as opposed to data mode
 						uart_command_state = CommandStateGoToSMSMode;
-						uart_send_str("AT+CMGF=1\n");
+						tx_buffer_reset();
+						strcpy(tx_buffer, "AT+CMGF=1\n");
+						uart_send_command();
 					}
 					break;
 				}
@@ -104,8 +110,7 @@ int main(void)
 						P1OUT &= ~LED_MSP; // red LED off
 
 						// We are now ready to send a text whenever the system needs to
-						uart_command_state = CommandStateIdle;
-						uart_command_has_completed = 0; // In general, reset (zero) this flag if uart_send_str(..) is not called
+						uart_enter_idle_mode();
 					}
 					break;
 				}
@@ -116,7 +121,9 @@ int main(void)
 					{
 						// Send the text now
 						uart_command_state = CommandStateSendWarningSMS;
-						uart_send_str("Msg from Sol-Mate: Check your boat; water level is getting high.\n\x1A");
+						tx_buffer_reset();
+						strcpy(tx_buffer, "Msg from Sol-Mate: Check your boat; water level is getting high.\n\x1A");
+						uart_send_command();
 					}
 					break;
 				}
@@ -131,6 +138,53 @@ int main(void)
 					}
 					break;
 				}
+
+				case CommandStateUnsolicitedMsg: // Received a message from the cell module
+				{
+					// Check what kind of code this is..
+					// SMS:
+					if(strstr(rx_buffer, "+CMTI")) // strstr returns null/0 if not found
+					{
+						// Find the comma
+						char *begin_ptr = strchr(rx_buffer, ',');
+						if(!begin_ptr)
+							break;
+						begin_ptr++; // should point to the beginning of the SMS index we need
+
+						// Find the '\r' which is directly following the last character of the SMS index
+						char *end_ptr = strchr(rx_buffer, '\r');
+						if(!end_ptr)
+							break;
+
+						// Create the command to read the sms
+						tx_buffer_reset();
+						strcat(tx_buffer, "AT+CMGR=");
+						strncat(tx_buffer, begin_ptr, end_ptr - begin_ptr); // SMS index
+						strcat(tx_buffer, "\r\n");
+
+						// Send the command
+						UCA0IE |= UCRXIE; // enable rx interrupt
+						uart_command_state = CommandStateReadSMS;
+						uart_send_command();
+					}
+					else // unrecognized
+					{
+						UCA0IE |= UCRXIE;
+						uart_enter_idle_mode();
+					}
+
+					break;
+				}
+
+				case CommandStateReadSMS:
+				{
+					P4OUT |= LED_MSP_2; // green LED on
+					P1OUT &= ~LED_MSP; // red LED off
+
+					uart_enter_idle_mode();
+
+					break;
+				}
 			}
 
     		// Turn CPU off until someone calls LPM0_EXIT (uart interrupt handler will)
@@ -139,22 +193,12 @@ int main(void)
     }
 }
 
-#pragma vector=PORT1_VECTOR
-__interrupt void port1_interrupt_handler()
-{
-	// Toggle float switch variable
-	floatswitch_active = (P1IN & INPUT_FLOATSWITCH) ? 0 : 1; // false means ground/zero -> switch pressed (1)
-
-	// Switch interrupt edge select
-	P1IES ^= INPUT_FLOATSWITCH;
-
-	// Reset flag
-	P1IFG = 0;
-}
-
 #pragma vector=TIMER0_A0_VECTOR
 __interrupt void timerA0_interrupt_handler()
 {
+	// Toggle float switch variable
+	floatswitch_active = (P6IN & INPUT_FLOATSWITCH) ? 0 : 1; // false means ground/zero -> switch pressed (1)
+
 	// Check water depth
 	if(floatswitch_active || water_depth > 70) // water depth values go from 0 to 255
 	{
@@ -174,7 +218,10 @@ __interrupt void timerA0_interrupt_handler()
 
 					// Send the text!!
 					uart_command_state = CommandStatePrepareWarningSMS;
-					uart_send_str("AT+CMGS=\"9783642893\"\n");
+					tx_buffer_reset();
+					strcpy(tx_buffer, "AT+CMGS=\"9783642893\"\n");
+					uart_send_command();
+
 					sent_text = 1;
 				}
 			}

@@ -23,6 +23,14 @@
 #define BAUDSPEED_MCTL 0x91
 #endif
 
+// Maximum buffer sizes in bytes for sending and receiving
+#define MAX_RX_BUFFER 97
+#define MAX_TX_BUFFER 97
+
+// Buffers for sending and receiving data //
+char rx_buffer[MAX_RX_BUFFER]; // The receive buffer
+char tx_buffer[MAX_TX_BUFFER]; // The transmit buffer
+
 // Return possibilities
 enum ReturnResult {
 	UartResultUndefined = -1,
@@ -37,7 +45,9 @@ enum CommandState {
 	CommandStateGoToSMSMode,
 	CommandStateIdle,
 	CommandStatePrepareWarningSMS,
-	CommandStateSendWarningSMS
+	CommandStateSendWarningSMS,
+	CommandStateUnsolicitedMsg,
+	CommandStateReadSMS
 };
 volatile char uart_command_state; // Controls what commands are sent to the gsm module
 
@@ -58,6 +68,14 @@ void uart_initialize();
 int uart_command_in_progress();
 
 // Send a string over the uart
-void uart_send_str(const char *send_str);
+void uart_send_command();
+//void uart_send_str(const char *send_str);
+
+// Go into idle mode
+void uart_enter_idle_mode();
+
+// Reset the buffers
+void rx_buffer_reset();
+void tx_buffer_reset();
 
 #endif /* UART_H_ */

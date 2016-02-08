@@ -115,6 +115,7 @@ __interrupt void uart_interrupt_handler()
 					if(*result_OK_ptr == '\0') // End of string array
 					{
 						uart_state = UartStateIdle; // Done running a command
+						UCA0IE &= ~UCRXIE; // Turn off receive interrupts for now
 						uart_command_result = UartResultOK; // Tells main loop what the result is
 						uart_command_has_completed = 1; // Tells main loop that we're done
 						LPM0_EXIT; // Turn on CPU to run the main loop
@@ -135,6 +136,7 @@ __interrupt void uart_interrupt_handler()
 					if(*result_ERROR_ptr == '\0')
 					{
 						uart_state = UartStateIdle; // Done running a command
+						UCA0IE &= ~UCRXIE; // Turn off receive interrupts for now
 						uart_command_result = UartResultError; // Tells main loop what the result is
 						uart_command_has_completed = 1; // Tells main loop that we're done
 						LPM0_EXIT; // Turn on CPU to run the main loop
@@ -154,6 +156,7 @@ __interrupt void uart_interrupt_handler()
 					if(*result_INPUT_ptr == '\0') // Match found
 					{
 						uart_state = UartStateIdle; // Done running a command
+						UCA0IE &= ~UCRXIE; // Turn off receive interrupts for now
 						uart_command_result = UartResultInput; // Tells main loop what the result is
 						uart_command_has_completed = 1; // Tells main loop that we're done
 						LPM0_EXIT; // Turn on CPU to run the main loop
@@ -229,12 +232,11 @@ void uart_send_command()
 	uart_command_result = UartResultUndefined;
 	rx_buffer_reset();
 
-	// Copy send_str to tx_buffer
-//	unsigned int send_str_len = strlen(send_str);
-//	strncpy(tx_buffer, send_str, send_str_len);
-
 	// Don't allow sending strings until this one is finished
 	uart_state = UartStateBusy;
+
+	// Enable rx interrupts
+	UCA0IE |= UCRXIE;
 
 	// Put the first byte into the transmit buffer (this starts the process)
 	tx_buffer_index = 1; // Interrupt handler will start at the second byte (index 1)
@@ -247,6 +249,7 @@ void uart_enter_idle_mode()
 	uart_command_state = CommandStateIdle;
 	uart_command_has_completed = 0; // In general, reset (zero) this flag if uart_send_str(..) is not called
 	rx_buffer_reset(); // Clear rx buffer (make room for messages from the module)
+	UCA0IE |= UCRXIE; // enable rx interrupt
 }
 
 // Returns 1 if the uart is currently sending a command, and 0 if it is not

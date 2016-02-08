@@ -14,9 +14,9 @@ volatile char water_depth; // Contains water depth value
 volatile char battery_charge; // Contains battery charge value
 volatile char pump_active; // Controls the water pump (0 = off, 1 = on)
 
-// 'Scratch' space for putting together UART commands
-#define CMD_BUFFER_LENGTH 31
-char uart_command_buffer[CMD_BUFFER_LENGTH];
+// Phone numba
+#define MAX_PHONE_LENGTH 16
+char phone_number[MAX_PHONE_LENGTH]; // like +14445556666
 
 int main(void)
 {
@@ -28,7 +28,7 @@ int main(void)
     water_depth = 0;
     battery_charge = 0;
     pump_active = 0;
-    memset(uart_command_buffer, '\0', CMD_BUFFER_LENGTH);
+    memset(phone_number, '\0', MAX_PHONE_LENGTH);
 
     // Set up button
     P6DIR &= ~INPUT_FLOATSWITCH;
@@ -64,7 +64,7 @@ int main(void)
 	P4OUT &= ~LED_MSP_2;
 
 	tx_buffer_reset();
-    strcpy(tx_buffer, "AT\n");
+    strcpy(tx_buffer, "AT\r\n");
     uart_send_command();
 
     // Stop watchdog timer
@@ -88,7 +88,19 @@ int main(void)
     	{
     		switch(uart_command_state)
 			{
-				case CommandStateSendingAT: // Got a response after sending AT
+    			case CommandStateSendingAT:
+    			{
+    				if(uart_command_result == UartResultOK)
+    				{
+    					// Send ATE0 because we do not need a copy of what we send
+    					uart_command_state = CommandStateTurnOffEcho;
+    					tx_buffer_reset();
+    					strcpy(tx_buffer, "ATE0\r\n");
+    					uart_send_command();
+    				}
+    				break;
+    			}
+				case CommandStateTurnOffEcho: // Got a response after sending AT
 				{
 					if(uart_command_result == UartResultOK)
 					{
@@ -96,7 +108,7 @@ int main(void)
 						// This puts the cell module into SMS mode, as opposed to data mode
 						uart_command_state = CommandStateGoToSMSMode;
 						tx_buffer_reset();
-						strcpy(tx_buffer, "AT+CMGF=1\n");
+						strcpy(tx_buffer, "AT+CMGF=1\r\n");
 						uart_send_command();
 					}
 					break;
@@ -142,19 +154,24 @@ int main(void)
 				case CommandStateUnsolicitedMsg: // Received a message from the cell module
 				{
 					// Check what kind of code this is..
-					// SMS:
+					// --SMS--
+					// +CMTI: "SM",3\r\n
 					if(strstr(rx_buffer, "+CMTI")) // strstr returns null/0 if not found
 					{
 						// Find the comma
 						char *begin_ptr = strchr(rx_buffer, ',');
-						if(!begin_ptr)
+						if(!begin_ptr) {
+							uart_enter_idle_mode();
 							break;
+						}
 						begin_ptr++; // should point to the beginning of the SMS index we need
 
 						// Find the '\r' which is directly following the last character of the SMS index
-						char *end_ptr = strchr(rx_buffer, '\r');
-						if(!end_ptr)
+						char *end_ptr = strchr(begin_ptr, '\r');
+						if(!end_ptr) {
+							uart_enter_idle_mode();
 							break;
+						}
 
 						// Create the command to read the sms
 						tx_buffer_reset();
@@ -163,25 +180,55 @@ int main(void)
 						strcat(tx_buffer, "\r\n");
 
 						// Send the command
-						UCA0IE |= UCRXIE; // enable rx interrupt
 						uart_command_state = CommandStateReadSMS;
 						uart_send_command();
 					}
 					else // unrecognized
-					{
-						UCA0IE |= UCRXIE;
 						uart_enter_idle_mode();
-					}
 
 					break;
 				}
 
 				case CommandStateReadSMS:
 				{
-					P4OUT |= LED_MSP_2; // green LED on
-					P1OUT &= ~LED_MSP; // red LED off
+					if(uart_command_result == UartResultOK)
+					{
+						// +CMGR: "<status>","<origin number>","<??>","<timestamp>"\r\n
+						// text contents here\r\n
+						// \r\n
+						// OK\r\n
 
-					uart_enter_idle_mode();
+						// find the 1st comma
+						char *begin_ptr = strchr(rx_buffer, ',');
+						if(!begin_ptr || *(begin_ptr+1) != '"') {
+							uart_enter_idle_mode();
+							break;
+						}
+						begin_ptr += 2; // Move to the beginning of the number
+
+						// find the ending quotation mark
+						char *end_ptr = strchr(begin_ptr, '"');
+						if(!end_ptr) {
+							uart_enter_idle_mode();
+							break;
+						}
+
+						// Check if it's too long
+						if(end_ptr - begin_ptr > MAX_PHONE_LENGTH) {
+							uart_enter_idle_mode();
+							break;
+						}
+
+						// get the phone number
+						strncpy(phone_number, begin_ptr, end_ptr - begin_ptr);
+
+						P4OUT |= LED_MSP_2; // green LED on
+						P1OUT &= ~LED_MSP; // red LED off
+
+						uart_enter_idle_mode();
+					}
+					else
+						uart_enter_idle_mode();
 
 					break;
 				}
@@ -219,7 +266,7 @@ __interrupt void timerA0_interrupt_handler()
 					// Send the text!!
 					uart_command_state = CommandStatePrepareWarningSMS;
 					tx_buffer_reset();
-					strcpy(tx_buffer, "AT+CMGS=\"9783642893\"\n");
+					strcpy(tx_buffer, "AT+CMGS=\"9783642893\"\r\n");
 					uart_send_command();
 
 					sent_text = 1;

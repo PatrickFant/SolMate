@@ -42,6 +42,7 @@ enum ReturnResult {
 // States of the system
 enum CommandState {
 	CommandStateSendingAT,
+	CommandStateTurnOffEcho,
 	CommandStateGoToSMSMode,
 	CommandStateIdle,
 	CommandStatePrepareWarningSMS,

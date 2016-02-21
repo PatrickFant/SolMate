@@ -12,7 +12,7 @@
 #include <msp430.h>
 
 
-#define PHONE_ADDRESS (char *)0xE000
+volatile char * phone_address = (char *) 0x1980;
 
 
 // __DINT() is in IAR workbench
@@ -37,7 +37,7 @@ void flash_write(char * address, char * buffer) {
 	FCTL3 = FWKEY;                       // Clear Lock bit
 	FCTL1 = FWKEY + WRT;                 // Set WRT bit for write operation
 
-	for (i = 0; i < 64; ++i)
+	for (i = 0; i < 128; ++i)
 		*address++ = buffer[i];         // copy value to flash
 
 	FCTL1 = FWKEY;                        // Clear WRT bit

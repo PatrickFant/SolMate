@@ -75,7 +75,7 @@ int main(void)
     TA0CTL = TACLR; // clear first
     TA0CTL = TASSEL__ACLK | ID__8 | MC__STOP; // auxiliary clock (32.768 kHz), divide by 8 (4096 Hz), interrupt enable, stop mode
     TA0CCTL0 = CCIE; // enable capture/compare interrupt
-    TA0CCR0 = 1023; // reduces rate to 4 Hz (4096/1024)
+    TA0CCR0 = 2047; // reduces rate to 2 times/sec
     TA0CTL |= MC__UP; // start the timer in up mode (counts to TA0CCR0 then resets to 0)
 
     // Turn CPU off
@@ -236,28 +236,25 @@ int main(void)
 						}
 
 						// Check for the "password"
-						if(strcmp(begin_ptr, "978SolMate") == 0)
+						if(strstr(begin_ptr_sms, "978SolMate"))
 						{
 							// copy the phone number into ram
 							strncpy(phone_number, begin_ptr, end_ptr - begin_ptr);
 
 							// Now copy it into flash memory
-							flash_erase(phone_address);
+							flash_erase(PHONE_ADDRESS);
 							flash_write_phone_number(phone_number, MAX_PHONE_LENGTH);
 
 							// Send the user an acknowledgement
 							uart_command_state = CommandStatePreparePhoneSMS;
 							tx_buffer_reset();
 							strcpy(tx_buffer, "AT+CMGS=\"");
-							strcat(tx_buffer, phone_number);
+							strncat(tx_buffer, phone_number, MAX_PHONE_LENGTH);
 							strcat(tx_buffer, "\"\r\n");
 							uart_send_command();
 						}
-
-						P4OUT |= LED_MSP_2; // green LED on
-						P1OUT &= ~LED_MSP; // red LED off
-
-						uart_enter_idle_mode();
+						else // incorrect password
+							uart_enter_idle_mode();
 					}
 					else
 						uart_enter_idle_mode();
@@ -281,7 +278,10 @@ int main(void)
 				case CommandStateSendPhoneSMS:
 				{
 					if(uart_command_result == UartResultOK)
+					{
+						P4OUT |= LED_MSP_2; // green LED on
 						P1OUT &= ~LED_MSP; // red LED off
+					}
 					break;
 				}
 			}

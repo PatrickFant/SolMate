@@ -9,10 +9,13 @@
 #define FLASH_H_
 
 
-#include <msp430.h>
+#include <msp430f5529.h>
 
 
-// Address of phone number in information memory.
+#define FLASH_BUFFER_SIZE 128
+
+
+// Address of phone number in memory.
 volatile char * phone_address = (char *) 0x1980;
 
 
@@ -39,7 +42,7 @@ void flash_write(char * address, char * buffer) {
 	FCTL3 = FWKEY;                       // Clear Lock bit
 	FCTL1 = FWKEY + WRT;                 // Set WRT bit for write operation
 
-	for (i = 0; i < 128; ++i)
+	for (i = 0; i < FLASH_BUFFER_SIZE; ++i)
 		*address++ = buffer[i];         // copy value to flash
 
 	FCTL1 = FWKEY;                        // Clear WRT bit
@@ -50,7 +53,7 @@ void flash_write(char * address, char * buffer) {
 
 // Write phone number to flash memory.
 void flash_write_phone_number(char * phone_number, unsigned char max_length) {
-	char buffer[128] = {0};
+	char buffer[FLASH_BUFFER_SIZE] = {0};
 	int i;
 	// Write phone_number into buffer.
 	for (i = 0; i < max_length; ++i)

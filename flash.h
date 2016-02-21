@@ -16,7 +16,7 @@
 
 
 // Address of phone number in memory.
-volatile char * phone_address = (char *) 0x1980;
+volatile char * phone_address = (char *) 0x1900;
 
 
 // Erase block of flash memory pointed to by address.

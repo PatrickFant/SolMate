@@ -12,10 +12,11 @@
 #include <msp430.h>
 
 
+// Address of phone number in information memory.
 volatile char * phone_address = (char *) 0x1980;
 
 
-// __DINT() is in IAR workbench
+// Erase block of flash memory pointed to by address.
 void flash_erase(char * address) {
 	_DINT();                             // Disable interrupts.
 	while(BUSY & FCTL3);                 // Check if Flash being used
@@ -30,6 +31,7 @@ void flash_erase(char * address) {
 }
 
 
+// Write buffer to block of flash memory pointed to by address.
 void flash_write(char * address, char * buffer) {
 	_DINT();                             // Disable interrupts.
 	int i = 0;
@@ -43,6 +45,17 @@ void flash_write(char * address, char * buffer) {
 	FCTL1 = FWKEY;                        // Clear WRT bit
 	FCTL3 = FWKEY + LOCK;                 // Set LOCK bit
 	_EINT();
+}
+
+
+// Write phone number to flash memory.
+void flash_write_phone_number(char * phone_number, unsigned char max_length) {
+	char buffer[128] = {0};
+	int i;
+	// Write phone_number into buffer.
+	for (i = 0; i < max_length; ++i)
+		buffer[i] = phone_number[i];
+	flash_write(phone_address, buffer);
 }
 
 

@@ -2,6 +2,7 @@
 #include "definitions.h"
 #include "uart.h"
 #include "adc.h"
+#include "flash.h"
 #include <string.h>
 
 /*
@@ -219,8 +220,30 @@ int main(void)
 							break;
 						}
 
-						// get the phone number
-						strncpy(phone_number, begin_ptr, end_ptr - begin_ptr);
+						// Look at the contents of the text - it starts right after the first \r\n
+						char *begin_ptr_sms = strchr('\n');
+						if(!begin_ptr_sms) {
+							uart_enter_idle_mode();
+							break;
+						}
+						begin_ptr_sms++; // Move to the beginning of the text
+
+						// The text ends right before the next \r\n
+						char *end_ptr_sms = strchr('\r');
+						if(!end_ptr_sms) {
+							uart_enter_idle_mode();
+							break;
+						}
+
+						// Check for the "password"
+						if(strcmp(begin_ptr, "978SolMate") == 0)
+						{
+							// copy the phone number into ram
+							strncpy(phone_number, begin_ptr, end_ptr - begin_ptr);
+
+							// Now copy it into flash memory
+							flash_erase(PHONE_ADDRESS);
+						}
 
 						P4OUT |= LED_MSP_2; // green LED on
 						P1OUT &= ~LED_MSP; // red LED off

@@ -48,7 +48,9 @@ enum CommandState {
 	CommandStatePrepareWarningSMS,
 	CommandStateSendWarningSMS,
 	CommandStateUnsolicitedMsg,
-	CommandStateReadSMS
+	CommandStateReadSMS,
+	CommandStatePreparePhoneSMS,
+	CommandStateSendPhoneSMS
 };
 volatile char uart_command_state; // Controls what commands are sent to the gsm module
 

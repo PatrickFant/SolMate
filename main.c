@@ -221,7 +221,7 @@ int main(void)
 						}
 
 						// Look at the contents of the text - it starts right after the first \r\n
-						char *begin_ptr_sms = strchr('\n');
+						char *begin_ptr_sms = strchr(rx_buffer, '\n');
 						if(!begin_ptr_sms) {
 							uart_enter_idle_mode();
 							break;
@@ -229,7 +229,7 @@ int main(void)
 						begin_ptr_sms++; // Move to the beginning of the text
 
 						// The text ends right before the next \r\n
-						char *end_ptr_sms = strchr('\r');
+						char *end_ptr_sms = strchr(begin_ptr_sms, '\r');
 						if(!end_ptr_sms) {
 							uart_enter_idle_mode();
 							break;
@@ -242,7 +242,16 @@ int main(void)
 							strncpy(phone_number, begin_ptr, end_ptr - begin_ptr);
 
 							// Now copy it into flash memory
-							flash_erase(PHONE_ADDRESS);
+							flash_erase(phone_address);
+							flash_write_phone_number(phone_number, MAX_PHONE_LENGTH);
+
+							// Send the user an acknowledgement
+							uart_command_state = CommandStatePreparePhoneSMS;
+							tx_buffer_reset();
+							strcpy(tx_buffer, "AT+CMGS=\"");
+							strcat(tx_buffer, phone_number);
+							strcat(tx_buffer, "\"\r\n");
+							uart_send_command();
 						}
 
 						P4OUT |= LED_MSP_2; // green LED on
@@ -253,6 +262,26 @@ int main(void)
 					else
 						uart_enter_idle_mode();
 
+					break;
+				}
+
+				case CommandStatePreparePhoneSMS:
+				{
+					if(uart_command_result == UartResultInput)
+					{
+						// Send the text now
+						uart_command_state = CommandStateSendPhoneSMS;
+						tx_buffer_reset();
+						strcpy(tx_buffer, "Msg from Sol-Mate: Your phone number has been successfully changed.\n\x1A");
+						uart_send_command();
+					}
+					break;
+				}
+
+				case CommandStateSendPhoneSMS:
+				{
+					if(uart_command_result == UartResultOK)
+						P1OUT &= ~LED_MSP; // red LED off
 					break;
 				}
 			}
@@ -289,7 +318,9 @@ __interrupt void timerA0_interrupt_handler()
 					// Send the text!!
 					uart_command_state = CommandStatePrepareWarningSMS;
 					tx_buffer_reset();
-					strcpy(tx_buffer, "AT+CMGS=\"9783642893\"\r\n");
+					strcpy(tx_buffer, "AT+CMGS=\"");
+					strcat(tx_buffer, phone_number);
+					strcat(tx_buffer, "\"\r\n");
 					uart_send_command();
 
 					sent_text = 1;

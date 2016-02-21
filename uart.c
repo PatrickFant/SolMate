@@ -98,7 +98,7 @@ __interrupt void uart_interrupt_handler()
 						UCA0IE &= ~UCRXIE; // Turn off receive interrupts for now
 						uart_command_has_completed = 1;
 						uart_command_state = CommandStateUnsolicitedMsg; // Going to process it in the main loop
-						LPM0_EXIT; // Turn on cpu
+						LPM3_EXIT; // Turn on cpu
 						return;
 					}
 				}
@@ -118,7 +118,7 @@ __interrupt void uart_interrupt_handler()
 						UCA0IE &= ~UCRXIE; // Turn off receive interrupts for now
 						uart_command_result = UartResultOK; // Tells main loop what the result is
 						uart_command_has_completed = 1; // Tells main loop that we're done
-						LPM0_EXIT; // Turn on CPU to run the main loop
+						LPM3_EXIT; // Turn on CPU to run the main loop
 //						TA0CTL |= MC__STOP;
 						return;
 					}
@@ -139,7 +139,7 @@ __interrupt void uart_interrupt_handler()
 						UCA0IE &= ~UCRXIE; // Turn off receive interrupts for now
 						uart_command_result = UartResultError; // Tells main loop what the result is
 						uart_command_has_completed = 1; // Tells main loop that we're done
-						LPM0_EXIT; // Turn on CPU to run the main loop
+						LPM3_EXIT; // Turn on CPU to run the main loop
 						return;
 					}
 				}
@@ -159,7 +159,7 @@ __interrupt void uart_interrupt_handler()
 						UCA0IE &= ~UCRXIE; // Turn off receive interrupts for now
 						uart_command_result = UartResultInput; // Tells main loop what the result is
 						uart_command_has_completed = 1; // Tells main loop that we're done
-						LPM0_EXIT; // Turn on CPU to run the main loop
+						LPM3_EXIT; // Turn on CPU to run the main loop
 						return;
 					}
 				}

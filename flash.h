@@ -12,7 +12,7 @@
 #include <msp430.h>
 
 
-#define PHONE_ADDRESS (char *)0xE000
+volatile char * phone_address = (char *) 0xE000;
 
 
 // __DINT() is in IAR workbench

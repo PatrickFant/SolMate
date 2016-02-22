@@ -42,9 +42,9 @@ int main(void)
 
     // Set up msp430 LEDs
     P1DIR |= LED_MSP;
-    P4DIR |= LED_MSP_2;
+//    P4DIR |= LED_MSP_2;
     P1OUT &= ~LED_MSP;
-    P4OUT &= ~LED_MSP_2;
+//    P4OUT &= ~LED_MSP_2;
 
     // Initialize the uart and ADC, start ADC conversion
     uart_initialize();
@@ -79,7 +79,7 @@ int main(void)
     TA0CTL |= MC__UP; // start the timer in up mode (counts to TA0CCR0 then resets to 0)
 
     // Turn CPU off
-    LPM0;
+    LPM3;
 
     // Main loop
     while(1)
@@ -119,7 +119,7 @@ int main(void)
 				{
 					if(uart_command_result == UartResultOK)
 					{
-						P4OUT |= LED_MSP_2; // green LED on
+//						P4OUT |= LED_MSP_2; // green LED on
 						P1OUT &= ~LED_MSP; // red LED off
 
 						// We are now ready to send a text whenever the system needs to
@@ -145,7 +145,7 @@ int main(void)
 				{
 					if(uart_command_result == UartResultOK)
 					{
-						P4OUT |= LED_MSP_2; // green LED on
+//						P4OUT |= LED_MSP_2; // green LED on
 						P1OUT &= ~LED_MSP; // red LED off
 						sent_text = 1; // Do not send the text again (this is for testing purposes--to send another text you have to restart the MSP)
 					}
@@ -228,12 +228,17 @@ int main(void)
 						}
 						begin_ptr_sms++; // Move to the beginning of the text
 
+<<<<<<< HEAD
 						// The text ends right before the next \r\n
 						char *end_ptr_sms = strchr(begin_ptr_sms, '\r');
 						if(!end_ptr_sms) {
 							uart_enter_idle_mode();
 							break;
 						}
+=======
+//						P4OUT |= LED_MSP_2; // green LED on
+						P1OUT &= ~LED_MSP; // red LED off
+>>>>>>> a99b623c1a3d62ddd1db665f74f06ef8a56d00b7
 
 						// Check for the "password"
 						if(strstr(begin_ptr_sms, "978SolMate"))
@@ -286,8 +291,8 @@ int main(void)
 				}
 			}
 
-    		// Turn CPU off until someone calls LPM0_EXIT (uart interrupt handler will)
-    		LPM0;
+    		// Turn CPU off until someone calls LPM3_EXIT (uart interrupt handler will)
+    		LPM3;
     	}
     }
 }

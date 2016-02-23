@@ -10,8 +10,8 @@
  */
 
 // State variables
-volatile char floatswitch_active; // Contains 1 if active, 0 if not
-volatile char water_depth; // Contains water depth value
+//volatile char floatswitch_active; // Contains 1 if active, 0 if not
+volatile char floatswitches; // Contains water depth value (each bit represents a float switch)
 volatile char battery_charge; // Contains battery charge value
 volatile char solarpanel_voltage; // panel voltage
 volatile char pump_active; // Controls the water pump (0 = off, 1 = on)
@@ -26,8 +26,8 @@ int main(void)
     WDTCTL = WDTPW | WDTHOLD;
 
     // Initialize state variables
-    floatswitch_active = 0;
-    water_depth = 0;
+//    floatswitch_active = 0;
+    floatswitches = 0;
     battery_charge = 0;
     solarpanel_voltage = 0;
     pump_active = 0;
@@ -37,14 +37,14 @@ int main(void)
     if(strncmp(PHONE_ADDRESS, "+1", 2) == 0) // Phone numbers start with +1
     	strncpy(phone_number, PHONE_ADDRESS, MAX_PHONE_LENGTH); // copy from flash into ram
 
-    // Set up button
-    P6DIR &= ~INPUT_FLOATSWITCH;
-    P6REN |= INPUT_FLOATSWITCH;
-    P6OUT |= INPUT_FLOATSWITCH;
+    // Set up float switches
+    P1DIR &= ~(FLOATSWITCH_0 | FLOATSWITCH_1 | FLOATSWITCH_2);
+    P1REN |= FLOATSWITCH_0 | FLOATSWITCH_1 | FLOATSWITCH_2;
+    P1OUT |= FLOATSWITCH_0 | FLOATSWITCH_1 | FLOATSWITCH_2;
 
-    // Set up pump LED
-    P6DIR |= LED_PUMP;
-    P6OUT &= ~LED_PUMP;
+    // Set up water pump and solarpanel on/off
+    P6DIR |= PUMP_CONTROL | SOLARPANEL_CONTROL;
+    P6OUT &= ~(PUMP_CONTROL | SOLARPANEL_CONTROL);
 
     // Set up msp430 LEDs
     P1DIR |= LED_MSP;
@@ -310,6 +310,7 @@ int main(void)
 						tx_buffer_reset();
 						strcpy(tx_buffer, "Msg from Sol-Mate: Here's your status report.\r\n");
 
+						// Battery status
 						if(battery_charge > 230)
 							strcat(tx_buffer, "Battery level: Full\r\n");
 						else if(battery_charge > 100)
@@ -317,6 +318,26 @@ int main(void)
 						else
 							strcat(tx_buffer, "Battery level: Low\r\n");
 						
+						// Solar panel charge
+						if(solarpanel_voltage > 230)
+							strcat(tx_buffer, "Charge rate: High\r\n");
+						else if(solarpanel_voltage > 100)
+							strcat(tx_buffer, "Charge rate: Medium\r\n");
+						else if(solarpanel_voltage > 30)
+							strcat(tx_buffer, "Charge rate: Low\r\n");
+						else
+							strcat(tx_buffer, "Charge rate: None\r\n");
+
+						// Water depth
+						if(floatswitches == 0x7) // all 3
+							strcat(tx_buffer, "Water level: High\r\n");
+						else if(floatswitches == 0x3) // 2
+							strcat(tx_buffer, "Water level: Medium\r\n");
+						else if(floatswitches == 0x1) // 1
+							strcat(tx_buffer, "Water level: Low\r\n");
+						else if(floatswitches == 0) // 0
+							strcat(tx_buffer, "Water level: None\r\n");
+
 						strcat(tx_buffer, "\x1A");
 						uart_send_command();
 					}
@@ -344,10 +365,16 @@ int main(void)
 __interrupt void timerA0_interrupt_handler()
 {
 	// Toggle float switch variable
-	floatswitch_active = (P6IN & INPUT_FLOATSWITCH) ? 0 : 1; // false means ground/zero -> switch pressed (1)
+//	floatswitch_active = (P6IN & INPUT_FLOATSWITCH) ? 0 : 1; // false means ground/zero -> switch pressed (1)
+
+	// Check the switches
+	floatswitches = 0;
+	floatswitches |= (P1IN & FLOATSWITCH_0) ? 0 : 0x1; // false means ground -> switch active
+	floatswitches |= (P1IN & FLOATSWITCH_1) ? 0 : 0x2; // false means ground -> switch active
+	floatswitches |= (P1IN & FLOATSWITCH_2) ? 0 : 0x4; // false means ground -> switch active
 
 	// Check water depth
-	if(floatswitch_active || water_depth > 70) // water depth values go from 0 to 255
+	if(floatswitches > 0)// || water_depth > 70) // water depth values go from 0 to 255
 	{
 		if(battery_charge > 100) // around 40% (100 out of 255)
 			pump_active = 1;
@@ -355,12 +382,11 @@ __interrupt void timerA0_interrupt_handler()
 		{
 			pump_active = 0;
 
-			if(water_depth > 127)
+			if(floatswitches == 0x7) // All floatswitches are on (7 == 4+2+1)
 			{
 				// There is not enough charge and too much water, notify over text
 				if(sent_text == 0 && uart_command_state == CommandStateIdle)
 				{
-					P4OUT &= ~LED_MSP_2; // green LED off
 					P1OUT |= LED_MSP; // red LED on
 
 					// Is there a phone number programmed? If not then don't send the sms
@@ -383,11 +409,17 @@ __interrupt void timerA0_interrupt_handler()
 	else // No water
 		pump_active = 0;
 
-	// Set pump LED output
+	// Set water pump output and solar panel output
 	if(pump_active)
-		P6OUT |= LED_PUMP;
+	{
+		P6OUT |= PUMP_CONTROL;
+		P6OUT &= ~SOLARPANEL_CONTROL;
+	}
 	else
-		P6OUT &= ~LED_PUMP;
+	{
+		P6OUT &= ~PUMP_CONTROL;
+		P6OUT |= SOLARPANEL_CONTROL;
+	}
 
 	// New conversion
 	adc_start_conversion();
@@ -400,10 +432,9 @@ __interrupt void ADC_interrupt_handler()
 	// Check the interrupt flags
 	switch(ADC12IV)
 	{
-		case ADC12IV_ADC12IFG2: // All readings have finished
-			water_depth = ADC12MEM0; // Save reading
-			battery_charge = ADC12MEM1; // Save reading
-			solarpanel_voltage = ADC12MEM2; // save reading
+		case ADC12IV_ADC12IFG1: // All readings have finished
+			battery_charge = ADC12MEM0; // Save reading
+			solarpanel_voltage = ADC12MEM1; // save reading
 			break;
 		default:
 			break;

@@ -7,7 +7,7 @@
 // Set up the analog to digital converter
 void adc_initialize()
 {
-	P6SEL |= ADC_PIN_WATERDEPTH | ADC_PIN_BAT_CHARGE | ADC_PIN_SOLARPANEL_VOLTAGE; // Set up pins
+	P6SEL |= ADC_PIN_BAT_CHARGE | ADC_PIN_SOLARPANEL_VOLTAGE; // Set up pins
 
 	// Set up ADC //
 	ADC12CTL0 = ADC12ON | ADC12MSC | ADC12SHT0_2; // Turn on ADC, enable multiple samples, set speed
@@ -15,10 +15,9 @@ void adc_initialize()
 	ADC12CTL2 = ADC12RES_0; // 8 bit resolution
 
 	ADC12MCTL0 = ADC12INCH_0; // reference Vcc and Vss, channel is A0
-	ADC12MCTL1 = ADC12INCH_1; // reference Vcc and Vss, channel is A1
-	ADC12MCTL2 = ADC12INCH_4 | ADC12EOS; // reference Vcc and Vss, channel is A4, end of sequence
+	ADC12MCTL1 = ADC12INCH_1 | ADC12EOS; // reference Vcc and Vss, channel is A1, end of sequence
 
-	ADC12IE = ADC12IFG2; // Enable interrupts for mctl2
+	ADC12IE = ADC12IFG1; // Enable interrupts for mctl1
 	// (we check all of them when the last one is done)
 
 	ADC12CTL0 |= ADC12ENC; // Enable conversions

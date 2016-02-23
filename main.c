@@ -13,6 +13,7 @@
 volatile char floatswitch_active; // Contains 1 if active, 0 if not
 volatile char water_depth; // Contains water depth value
 volatile char battery_charge; // Contains battery charge value
+volatile char solarpanel_voltage; // panel voltage
 volatile char pump_active; // Controls the water pump (0 = off, 1 = on)
 
 // Phone numba
@@ -28,8 +29,13 @@ int main(void)
     floatswitch_active = 0;
     water_depth = 0;
     battery_charge = 0;
+    solarpanel_voltage = 0;
     pump_active = 0;
+
+    // Read in the saved phone number from memory, if it is there
     memset(phone_number, '\0', MAX_PHONE_LENGTH);
+    if(strncmp(PHONE_ADDRESS, "+1", 2) == 0) // Phone numbers start with +1
+    	strncpy(phone_number, PHONE_ADDRESS, MAX_PHONE_LENGTH); // copy from flash into ram
 
     // Set up button
     P6DIR &= ~INPUT_FLOATSWITCH;
@@ -62,7 +68,6 @@ int main(void)
 
     // Send an AT first
 	P1OUT |= LED_MSP;
-	P4OUT &= ~LED_MSP_2;
 
 	tx_buffer_reset();
     strcpy(tx_buffer, "AT\r\n");
@@ -79,7 +84,7 @@ int main(void)
     TA0CTL |= MC__UP; // start the timer in up mode (counts to TA0CCR0 then resets to 0)
 
     // Turn CPU off
-    LPM3;
+    LPM0;
 
     // Main loop
     while(1)
@@ -119,7 +124,6 @@ int main(void)
 				{
 					if(uart_command_result == UartResultOK)
 					{
-//						P4OUT |= LED_MSP_2; // green LED on
 						P1OUT &= ~LED_MSP; // red LED off
 
 						// We are now ready to send a text whenever the system needs to
@@ -135,7 +139,7 @@ int main(void)
 						// Send the text now
 						uart_command_state = CommandStateSendWarningSMS;
 						tx_buffer_reset();
-						strcpy(tx_buffer, "Msg from Sol-Mate: Check your boat; water level is getting high.\n\x1A");
+						strcpy(tx_buffer, "Msg from Sol-Mate: Check your boat; water level is getting high.\r\n\x1A");
 						uart_send_command();
 					}
 					break;
@@ -145,15 +149,18 @@ int main(void)
 				{
 					if(uart_command_result == UartResultOK)
 					{
-//						P4OUT |= LED_MSP_2; // green LED on
 						P1OUT &= ~LED_MSP; // red LED off
 						sent_text = 1; // Do not send the text again (this is for testing purposes--to send another text you have to restart the MSP)
 					}
+
+					uart_enter_idle_mode();
 					break;
 				}
 
 				case CommandStateUnsolicitedMsg: // Received a message from the cell module
 				{
+					P1OUT |= LED_MSP; // red LED on
+
 					// Check what kind of code this is..
 					// --SMS--
 					// +CMTI: "SM",3\r\n
@@ -181,6 +188,7 @@ int main(void)
 						strcat(tx_buffer, "\r\n");
 
 						// Send the command
+						P1OUT &= ~LED_MSP; // red LED on
 						uart_command_state = CommandStateReadSMS;
 						uart_send_command();
 					}
@@ -192,6 +200,7 @@ int main(void)
 
 				case CommandStateReadSMS:
 				{
+					P1OUT |= LED_MSP; // red LED on
 					if(uart_command_result == UartResultOK)
 					{
 						// +CMGR: "<status>","<origin number>","<??>","<timestamp>"\r\n
@@ -200,22 +209,22 @@ int main(void)
 						// OK\r\n
 
 						// find the 1st comma
-						char *begin_ptr = strchr(rx_buffer, ',');
-						if(!begin_ptr || *(begin_ptr+1) != '"') {
+						char *begin_ptr_phone = strchr(rx_buffer, ',');
+						if(!begin_ptr_phone || *(begin_ptr_phone+1) != '"') {
 							uart_enter_idle_mode();
 							break;
 						}
-						begin_ptr += 2; // Move to the beginning of the number
+						begin_ptr_phone += 2; // Move to the beginning of the number
 
 						// find the ending quotation mark
-						char *end_ptr = strchr(begin_ptr, '"');
-						if(!end_ptr) {
+						char *end_ptr_phone = strchr(begin_ptr_phone, '"');
+						if(!end_ptr_phone) {
 							uart_enter_idle_mode();
 							break;
 						}
 
 						// Check if it's too long
-						if(end_ptr - begin_ptr > MAX_PHONE_LENGTH) {
+						if(end_ptr_phone - begin_ptr_phone > MAX_PHONE_LENGTH) {
 							uart_enter_idle_mode();
 							break;
 						}
@@ -228,29 +237,26 @@ int main(void)
 						}
 						begin_ptr_sms++; // Move to the beginning of the text
 
-<<<<<<< HEAD
 						// The text ends right before the next \r\n
 						char *end_ptr_sms = strchr(begin_ptr_sms, '\r');
 						if(!end_ptr_sms) {
 							uart_enter_idle_mode();
 							break;
 						}
-=======
-//						P4OUT |= LED_MSP_2; // green LED on
-						P1OUT &= ~LED_MSP; // red LED off
->>>>>>> a99b623c1a3d62ddd1db665f74f06ef8a56d00b7
 
 						// Check for the "password"
-						if(strstr(begin_ptr_sms, "978SolMate"))
+						if(strncmp(begin_ptr_sms, "978SolMate", end_ptr_sms - begin_ptr_sms) == 0)
 						{
 							// copy the phone number into ram
-							strncpy(phone_number, begin_ptr, end_ptr - begin_ptr);
+							memset(phone_number, '\0', MAX_PHONE_LENGTH);
+							strncpy(phone_number, begin_ptr_phone, end_ptr_phone - begin_ptr_phone);
 
 							// Now copy it into flash memory
 							flash_erase(PHONE_ADDRESS);
 							flash_write_phone_number(phone_number, MAX_PHONE_LENGTH);
 
 							// Send the user an acknowledgement
+							P1OUT &= ~LED_MSP; // red LED off
 							uart_command_state = CommandStatePreparePhoneSMS;
 							tx_buffer_reset();
 							strcpy(tx_buffer, "AT+CMGS=\"");
@@ -258,7 +264,19 @@ int main(void)
 							strcat(tx_buffer, "\"\r\n");
 							uart_send_command();
 						}
-						else // incorrect password
+						// Status report?
+						else if(strncmp(begin_ptr_sms, "What's up", end_ptr_sms - begin_ptr_sms) == 0)
+						{
+							// Send user the status report
+							P1OUT &= ~LED_MSP;
+							uart_command_state = CommandStatePrepareStatusSMS;
+							tx_buffer_reset();
+							strcpy(tx_buffer, "AT+CMGS=\"");
+							strncat(tx_buffer, phone_number, MAX_PHONE_LENGTH);
+							strcat(tx_buffer, "\"\r\n");
+							uart_send_command();
+						}
+						else // Unrecognized text
 							uart_enter_idle_mode();
 					}
 					else
@@ -269,30 +287,55 @@ int main(void)
 
 				case CommandStatePreparePhoneSMS:
 				{
+					P1OUT |= LED_MSP; // red LED on
+
 					if(uart_command_result == UartResultInput)
 					{
 						// Send the text now
 						uart_command_state = CommandStateSendPhoneSMS;
 						tx_buffer_reset();
-						strcpy(tx_buffer, "Msg from Sol-Mate: Your phone number has been successfully changed.\n\x1A");
+						strcpy(tx_buffer, "Msg from Sol-Mate: Your phone number has been successfully changed.\r\n\x1A");
+						uart_send_command();
+					}
+					break;
+				}
+
+				case CommandStatePrepareStatusSMS:
+				{
+					P1OUT |= LED_MSP; // red led
+					if(uart_command_result == UartResultInput)
+					{
+						// Put together the status text
+						uart_command_state = CommandStateSendStatusSMS;
+						tx_buffer_reset();
+						strcpy(tx_buffer, "Msg from Sol-Mate: Here's your status report.\r\n");
+
+						if(battery_charge > 230)
+							strcat(tx_buffer, "Battery level: Full\r\n");
+						else if(battery_charge > 100)
+							strcat(tx_buffer, "Battery level: Medium\r\n");
+						else
+							strcat(tx_buffer, "Battery level: Low\r\n");
+						
+						strcat(tx_buffer, "\x1A");
 						uart_send_command();
 					}
 					break;
 				}
 
 				case CommandStateSendPhoneSMS:
+				case CommandStateSendStatusSMS:
 				{
 					if(uart_command_result == UartResultOK)
-					{
-						P4OUT |= LED_MSP_2; // green LED on
 						P1OUT &= ~LED_MSP; // red LED off
-					}
+
+					uart_enter_idle_mode();
 					break;
 				}
 			}
 
-    		// Turn CPU off until someone calls LPM3_EXIT (uart interrupt handler will)
-    		LPM3;
+    		// Turn CPU off until someone calls LPM0_EXIT (uart interrupt handler will)
+    		LPM0;
     	}
     }
 }
@@ -320,15 +363,19 @@ __interrupt void timerA0_interrupt_handler()
 					P4OUT &= ~LED_MSP_2; // green LED off
 					P1OUT |= LED_MSP; // red LED on
 
-					// Send the text!!
-					uart_command_state = CommandStatePrepareWarningSMS;
-					tx_buffer_reset();
-					strcpy(tx_buffer, "AT+CMGS=\"");
-					strcat(tx_buffer, phone_number);
-					strcat(tx_buffer, "\"\r\n");
-					uart_send_command();
+					// Is there a phone number programmed? If not then don't send the sms
+					if(phone_number[0] != '\0')
+					{
+						// Send the text!!
+						uart_command_state = CommandStatePrepareWarningSMS;
+						tx_buffer_reset();
+						strcpy(tx_buffer, "AT+CMGS=\"");
+						strcat(tx_buffer, phone_number);
+						strcat(tx_buffer, "\"\r\n");
+						uart_send_command();
 
-					sent_text = 1;
+						sent_text = 1;
+					}
 				}
 			}
 		}
@@ -353,9 +400,12 @@ __interrupt void ADC_interrupt_handler()
 	// Check the interrupt flags
 	switch(ADC12IV)
 	{
-		case ADC12IV_ADC12IFG1: // Both readings have finished
+		case ADC12IV_ADC12IFG2: // All readings have finished
 			water_depth = ADC12MEM0; // Save reading
 			battery_charge = ADC12MEM1; // Save reading
+			solarpanel_voltage = ADC12MEM2; // save reading
+			break;
+		default:
 			break;
 	}
 }

@@ -99,10 +99,14 @@ int main(void)
     				if(uart_command_result == UartResultOK)
     				{
     					// Send ATE0 because we do not need a copy of what we send
-    					uart_command_state = CommandStateTurnOffEcho;
-    					tx_buffer_reset();
-    					strcpy(tx_buffer, "ATE0\r\n");
-    					uart_send_command();
+//    					uart_command_state = CommandStateTurnOffEcho;
+//    					tx_buffer_reset();
+//    					strcpy(tx_buffer, "ATE0\r\n");
+//    					uart_send_command();
+    					uart_command_state = CommandStateGoToSMSMode;
+						tx_buffer_reset();
+						strcpy(tx_buffer, "AT+CMGF=1\r\n");
+						uart_send_command();
     				}
     				break;
     			}
@@ -193,7 +197,10 @@ int main(void)
 						uart_send_command();
 					}
 					else // unrecognized
+					{
+						P1OUT &= ~LED_MSP;
 						uart_enter_idle_mode();
+					}
 
 					break;
 				}
@@ -245,7 +252,8 @@ int main(void)
 						}
 
 						// Check for the "password"
-						if(strncmp(begin_ptr_sms, "978SolMate", end_ptr_sms - begin_ptr_sms) == 0)
+//						if(strncmp(begin_ptr_sms, "978SolMate", end_ptr_sms - begin_ptr_sms) == 0) // DONT USE THIS HOLY SHIT!!!!
+						if(strstr(begin_ptr_sms, "978SolMate"))
 						{
 							// copy the phone number into ram
 							memset(phone_number, '\0', MAX_PHONE_LENGTH);
@@ -265,7 +273,8 @@ int main(void)
 							uart_send_command();
 						}
 						// Status report?
-						else if(strncmp(begin_ptr_sms, "What's up", end_ptr_sms - begin_ptr_sms) == 0)
+//						else if(strncmp(begin_ptr_sms, "What's up", end_ptr_sms - begin_ptr_sms) == 0)// <-- NO!!
+						else if(strstr(begin_ptr_sms, "What's up"))
 						{
 							// Send user the status report
 							P1OUT &= ~LED_MSP;
@@ -277,7 +286,10 @@ int main(void)
 							uart_send_command();
 						}
 						else // Unrecognized text
+						{
+							P1OUT &= ~LED_MSP;
 							uart_enter_idle_mode();
+						}
 					}
 					else
 						uart_enter_idle_mode();
@@ -312,21 +324,21 @@ int main(void)
 
 						// Battery status
 						if(battery_charge > 230)
-							strcat(tx_buffer, "Battery level: Full\r\n");
+							strcat(tx_buffer, "Battery level: Full -- ");
 						else if(battery_charge > 100)
-							strcat(tx_buffer, "Battery level: Medium\r\n");
+							strcat(tx_buffer, "Battery level: Medium -- ");
 						else
-							strcat(tx_buffer, "Battery level: Low\r\n");
+							strcat(tx_buffer, "Battery level: Low -- ");
 						
 						// Solar panel charge
 						if(solarpanel_voltage > 230)
-							strcat(tx_buffer, "Charge rate: High\r\n");
+							strcat(tx_buffer, "Charge rate: High -- ");
 						else if(solarpanel_voltage > 100)
-							strcat(tx_buffer, "Charge rate: Medium\r\n");
+							strcat(tx_buffer, "Charge rate: Medium -- ");
 						else if(solarpanel_voltage > 30)
-							strcat(tx_buffer, "Charge rate: Low\r\n");
+							strcat(tx_buffer, "Charge rate: Low -- ");
 						else
-							strcat(tx_buffer, "Charge rate: None\r\n");
+							strcat(tx_buffer, "Charge rate: None -- ");
 
 						// Water depth
 						if(floatswitches == 0x7) // all 3

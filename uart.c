@@ -90,7 +90,7 @@ __interrupt void uart_interrupt_handler()
 					// Check for \r\n
 					if(rx_buffer[rx_buffer_index - 1] == '\r' && rx_byte == '\n')
 					{
-						P4OUT &= ~LED_MSP_2; // green LED off
+//						P4OUT &= ~LED_MSP_2; // green LED off
 						P1OUT |= LED_MSP; // red LED on
 
 						// Stop here and go to main loop to decode the received message

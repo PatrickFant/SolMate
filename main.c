@@ -342,15 +342,15 @@ int main(void)
 
 						// Water depth
 						if(floatswitches == 0x7) // all 3
-							strcat(tx_buffer, "Water level: High\r\n");
+							strcat(tx_buffer, "Water level: High");
 						else if(floatswitches == 0x3) // 2
-							strcat(tx_buffer, "Water level: Medium\r\n");
+							strcat(tx_buffer, "Water level: Medium");
 						else if(floatswitches == 0x1) // 1
-							strcat(tx_buffer, "Water level: Low\r\n");
+							strcat(tx_buffer, "Water level: Low");
 						else if(floatswitches == 0) // 0
-							strcat(tx_buffer, "Water level: None\r\n");
+							strcat(tx_buffer, "Water level: None");
 
-						strcat(tx_buffer, "\x1A");
+						strcat(tx_buffer, "\r\n\x1A");
 						uart_send_command();
 					}
 					break;

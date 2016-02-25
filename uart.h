@@ -24,8 +24,8 @@
 #endif
 
 // Maximum buffer sizes in bytes for sending and receiving
-#define MAX_RX_BUFFER 97
-#define MAX_TX_BUFFER 97
+#define MAX_RX_BUFFER 190
+#define MAX_TX_BUFFER 190
 
 // Buffers for sending and receiving data //
 char rx_buffer[MAX_RX_BUFFER]; // The receive buffer

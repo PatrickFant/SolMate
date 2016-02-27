@@ -323,32 +323,40 @@ int main(void)
 						strcpy(tx_buffer, "Msg from Sol-Mate: Here's your status report.\r\n");
 
 						// Battery status
-						if(battery_charge > 230)
-							strcat(tx_buffer, "Battery level: Full -- ");
-						else if(battery_charge > 100)
-							strcat(tx_buffer, "Battery level: Medium -- ");
+						if(battery_charge > 248) // 12.9V
+							strcat(tx_buffer, "Battery level: Full\r\n");
+						else if(battery_charge > 230) // About 50% - 12.55V
+							strcat(tx_buffer, "Battery level: Medium\r\n");
+						else if(battery_charge > 217) // 12.2V
+							strcat(tx_buffer, "Battery level: Low\r\n");
 						else
-							strcat(tx_buffer, "Battery level: Low -- ");
+							strcat(tx_buffer, "Battery level: Very Low\r\n");
 						
 						// Solar panel charge
-						if(solarpanel_voltage > 230)
-							strcat(tx_buffer, "Charge rate: High -- ");
-						else if(solarpanel_voltage > 100)
-							strcat(tx_buffer, "Charge rate: Medium -- ");
-						else if(solarpanel_voltage > 30)
-							strcat(tx_buffer, "Charge rate: Low -- ");
+						if(solarpanel_voltage > 186)
+							strcat(tx_buffer, "Charge rate: High\r\n");
+						else if(solarpanel_voltage > 113)
+							strcat(tx_buffer, "Charge rate: Medium\r\n");
+						else if(solarpanel_voltage > 39)
+							strcat(tx_buffer, "Charge rate: Low\r\n");
 						else
-							strcat(tx_buffer, "Charge rate: None -- ");
+							strcat(tx_buffer, "Charge rate: None\r\n");
 
 						// Water depth
 						if(floatswitches == 0x7) // all 3
-							strcat(tx_buffer, "Water level: High");
-						else if(floatswitches == 0x3) // 2
-							strcat(tx_buffer, "Water level: Medium");
-						else if(floatswitches == 0x1) // 1
-							strcat(tx_buffer, "Water level: Low");
-						else if(floatswitches == 0) // 0
-							strcat(tx_buffer, "Water level: None");
+							strcat(tx_buffer, "Water level: High\r\n");
+						else if(floatswitches >= 0x3) // 2
+							strcat(tx_buffer, "Water level: Medium\r\n");
+						else if(floatswitches >= 0x1) // 1
+							strcat(tx_buffer, "Water level: Low\r\n");
+						else
+							strcat(tx_buffer, "Water level: None\r\n");
+
+						// Bailer
+						if(pump_active)
+							strcat(tx_buffer, "Water pump: On");
+						else
+							strcat(tx_buffer, "Water pump: Off");
 
 						strcat(tx_buffer, "\r\n\x1A");
 						uart_send_command();
@@ -437,7 +445,6 @@ __interrupt void timerA0_interrupt_handler()
 	adc_start_conversion();
 }
 
-// should move this to adc.c sometime
 #pragma vector=ADC12_VECTOR
 __interrupt void ADC_interrupt_handler()
 {

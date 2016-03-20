@@ -16,6 +16,20 @@ volatile char battery_charge; // Contains battery charge value
 volatile char solarpanel_voltage; // panel voltage
 volatile char pump_active; // Controls the water pump (0 = off, 1 = on)
 
+void toggle_gsm_power(void)
+{
+	// Set output to be LOW
+	P2DIR |= GSM_POWER_CONTROL; // output mode
+	P2OUT &= ~GSM_POWER_CONTROL; // low
+
+	// Start timer and run for 1.5 seconds, and call the interrupt handler when it's done
+	TA1CTL = TACLR;
+	TA1CTL = TASSEL__ACLK | ID__8 | MC__STOP; // aux clock, divide by 8 (so 4096 hz)
+	TA1CCTL0 = CCIE; // interrupt enable for ccr0
+	TA1CCR0 = 6144 - 1; // 1.5 secs (4096 * 1.5)
+	TA1CTL |= MC__UP; // activate timer
+}
+
 // Phone numba
 #define MAX_PHONE_LENGTH 16
 char phone_number[MAX_PHONE_LENGTH]; // like +14445556666
@@ -51,6 +65,13 @@ int main(void)
 //    P4DIR |= LED_MSP_2;
     P1OUT &= ~LED_MSP;
 //    P4OUT &= ~LED_MSP_2;
+
+    // Set up gsm 'power button'
+    P1DIR &= ~POWER_BUTTON;
+    P1REN |= POWER_BUTTON;
+    P1OUT |= POWER_BUTTON;
+    P1IE |= POWER_BUTTON; // interrupts
+    P1IES |= POWER_BUTTON; // high->low transition
 
     // Initialize the uart and ADC, start ADC conversion
     uart_initialize();
@@ -443,6 +464,35 @@ __interrupt void timerA0_interrupt_handler()
 
 	// New conversion
 	adc_start_conversion();
+}
+
+#pragma vector=TIMER1_A0_VECTOR // TA1CCR0 only
+__interrupt void timerA1_interrupt_handler()
+{
+	// Stop timer
+	TA1CTL = TACLR;
+
+	// Set gsm power output back to input/floating mode
+	P2DIR &= ~GSM_POWER_CONTROL;
+
+	// Enable port1 interrupts again
+	P1IE |= POWER_BUTTON;
+}
+
+#pragma vector=PORT1_VECTOR
+__interrupt void port1_interrupt_handler()
+{
+	switch(P1IV)
+	{
+	case P1IV_P1IFG1:
+	{
+		toggle_gsm_power();
+		P1IE &= ~POWER_BUTTON; // disable port1 interrupts until the timer is done
+		break;
+	}
+	default:
+		break;
+	}
 }
 
 #pragma vector=ADC12_VECTOR

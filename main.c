@@ -3,6 +3,7 @@
 #include "uart.h"
 #include "adc.h"
 #include "flash.h"
+#include <stdbool.h>
 #include <string.h>
 
 /*
@@ -30,12 +31,26 @@ void toggle_gsm_power(void)
 	TA1CTL |= MC__UP; // activate timer
 }
 
-int floatswitch_get_reading(char switches, size_t switch_count)
+/**
+ * Takes a binary int representing floatswitch values and determines the
+ * number of active switches as well as the validity of the reading.
+ */
+int floatswitch_get_reading(char switches, int number_of_switches)
 {
-  int i, active_switch_count;
-  for (i = 0; i < switch_count; ++i)
-    if ((switches >> i) & 1)
+  bool inactive_switch_found = false;
+  int active_switch_count = 0;
+  
+  int i;
+  for (i = 0; i < number_of_switches; ++i)
+  {
+    bool switch_is_active = (switches >> i) & 1;
+    if (switch_is_active && !inactive_switch_found)
       ++active_switch_count;
+    else if (switch_is_active && inactive_switch_found)
+      return -1;
+    else // switch is inactive
+      inactive_switch_found = true;
+  }
   return active_switch_count;
 }
 

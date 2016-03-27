@@ -31,28 +31,9 @@ void toggle_gsm_power(void)
 	TA1CTL |= MC__UP; // activate timer
 }
 
-/**
- * Takes a binary int representing floatswitch values and determines the
- * number of active switches as well as the validity of the reading.
- */
-int floatswitch_get_reading(char switches, int number_of_switches)
-{
-  bool inactive_switch_found = false;
-  int active_switch_count = 0;
-  
-  int i;
-  for (i = 0; i < number_of_switches; ++i)
-  {
-    bool switch_is_active = (switches >> i) & 1;
-    if (switch_is_active && !inactive_switch_found)
-      ++active_switch_count;
-    else if (switch_is_active && inactive_switch_found)
-      return -1;
-    else // switch is inactive
-      inactive_switch_found = true;
-  }
-  return active_switch_count;
-}
+// Returns an int representing the water level, so long as the floatswitch
+// reading is valid.
+int get_water_level(char switches, int number_of_switches);
 
 // Phone numba
 #define MAX_PHONE_LENGTH 16
@@ -148,20 +129,20 @@ int main(void)
     if(uart_command_has_completed)
     {
       switch(uart_command_state)
-    {
+      {
         case CommandStateSendingAT:
         {
           if(uart_command_result == UartResultOK)
           {
             // Send ATE0 because we do not need a copy of what we send
-            uart_command_state = CommandStateTurnOffEcho;
-            tx_buffer_reset();
-            strcpy(tx_buffer, "ATE0\r\n");
-            uart_send_command();
-//    					uart_command_state = CommandStateGoToSMSMode;
-//						tx_buffer_reset();
-//						strcpy(tx_buffer, "AT+CMGF=1\r\n");
-//						uart_send_command();
+//    					uart_command_state = CommandStateTurnOffEcho;
+//    					tx_buffer_reset();
+//    					strcpy(tx_buffer, "ATE0\r\n");
+//    					uart_send_command();
+            uart_command_state = CommandStateGoToSMSMode;
+          tx_buffer_reset();
+          strcpy(tx_buffer, "AT+CMGF=1\r\n");
+          uart_send_command();
           }
           break;
         }
@@ -210,6 +191,11 @@ int main(void)
         {
           P1OUT &= ~LED_MSP; // red LED off
           sent_text = 1; // Do not send the text again (this is for testing purposes--to send another text you have to restart the MSP)
+
+          // Delete all stored messages.
+          tx_buffer_reset();
+          strcpy(tx_buffer, "AT+CMGD=1,4\r\n");
+          uart_send_command();
         }
 
         uart_enter_idle_mode();
@@ -307,6 +293,7 @@ int main(void)
           }
 
           // Check for the "password"
+//						if(strncmp(begin_ptr_sms, "978SolMate", end_ptr_sms - begin_ptr_sms) == 0) // DONT USE THIS HOLY SHIT!!!!
           if(strstr(begin_ptr_sms, "978SolMate"))
           {
             // copy the phone number into ram
@@ -327,6 +314,7 @@ int main(void)
             uart_send_command();
           }
           // Status report?
+//						else if(strncmp(begin_ptr_sms, "What's up", end_ptr_sms - begin_ptr_sms) == 0)// <-- NO!!
           else if(strstr(begin_ptr_sms, "What's up"))
           {
             // Send user the status report
@@ -396,8 +384,7 @@ int main(void)
             strcat(tx_buffer, "Charge rate: None\r\n");
 
           // Water depth
-          // If a floatswitch is 0 and a higher floatswitch is 1, the reading is invalid.
-          int water_level = floatswitch_get_reading(floatswitches, 3);
+          int water_level = get_water_level(floatswitches, 3);
           switch(water_level)
           {
             case 0: // No floatswitches are active.
@@ -416,17 +403,7 @@ int main(void)
               strcat(tx_buffer, "Water level: ERR INVALID READING\r\n");
               break;
           }
-          /*if (floatswitch_reading == 3) // all 3 (111)
-            strcat(tx_buffer, "Water level: High\r\n");
-          else if (floatswitch_reading == 2) // 2 (110)
-            strcat(tx_buffer, "Water level: Medium\r\n");
-          else if (floatswitch_reading == 1) // 1 (100)
-            strcat(tx_buffer, "Water level: Low\r\n");
-          else if (floatswitch_reading == 0) // 0 (000)
-            strcat(tx_buffer, "Water level: None\r\n");
-          else // -1 (error)
-            strcat(tx_buffer, "Water level: ERR (invalid reading)\r\n");
-          */
+
           // Bailer
           if(pump_active)
             strcat(tx_buffer, "Water pump: On");
@@ -445,6 +422,11 @@ int main(void)
         if(uart_command_result == UartResultOK)
           P1OUT &= ~LED_MSP; // red LED off
 
+        // Delete all stored messages.
+        tx_buffer_reset();
+        strcpy(tx_buffer, "AT+CMGD=1,4\r\n");
+        uart_send_command();
+
         uart_enter_idle_mode();
         break;
       }
@@ -455,6 +437,33 @@ int main(void)
     }
   }
 }
+
+
+/**
+ * A floatswitch reading is valid if no active switch is higher than an
+ * inactive switch.  This function iterates through the floatswitches from
+ * lowest to highest and takes note when it encounters an inactive switch so as
+ * to identify erroneous readings.
+ */
+int get_water_level(char switch_states, int number_of_switches)
+{
+  bool inactive_switch_found = false;
+  int active_switch_count = 0;
+  
+  int i;
+  for (i = 0; i < number_of_switches; ++i)
+  {
+    bool switch_is_active = (switch_states >> i) & 1;
+    if (switch_is_active && !inactive_switch_found)
+      ++active_switch_count;
+    else if (switch_is_active && inactive_switch_found)
+      return -1;
+    else // switch is inactive
+      inactive_switch_found = true;
+  }
+  return active_switch_count;
+}
+
 
 #pragma vector=TIMER0_A0_VECTOR
 __interrupt void timerA0_interrupt_handler()

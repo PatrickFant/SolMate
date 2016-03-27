@@ -31,28 +31,9 @@ void toggle_gsm_power(void)
 	TA1CTL |= MC__UP; // activate timer
 }
 
-/**
- * Takes a binary int representing floatswitch values and determines the
- * number of active switches as well as the validity of the reading.
- */
-int floatswitch_get_reading(char switches, int number_of_switches)
-{
-  bool inactive_switch_found = false;
-  int active_switch_count = 0;
-  
-  int i;
-  for (i = 0; i < number_of_switches; ++i)
-  {
-    bool switch_is_active = (switches >> i) & 1;
-    if (switch_is_active && !inactive_switch_found)
-      ++active_switch_count;
-    else if (switch_is_active && inactive_switch_found)
-      return -1;
-    else // switch is inactive
-      inactive_switch_found = true;
-  }
-  return active_switch_count;
-}
+// Returns an int representing the water level, so long as the floatswitch
+// reading is valid.
+int get_water_level(char switches, int number_of_switches);
 
 // Phone numba
 #define MAX_PHONE_LENGTH 16
@@ -389,7 +370,7 @@ int main(void)
 
 						// Water depth
             // If a floatswitch is 0 and a higher floatswitch is 1, the reading is invalid.
-            int water_level = floatswitch_get_reading(floatswitches, 3);
+            int water_level = get_water_level(floatswitches, 3);
             switch(water_level)
             {
               case 0: // No floatswitches are active.
@@ -447,6 +428,33 @@ int main(void)
     	}
     }
 }
+
+
+/**
+ * A floatswitch reading is valid if no active switch is higher than an
+ * inactive switch.  This function iterates through the floatswitches from
+ * lowest to highest and takes note when it encounters an inactive switch so as
+ * to identify erroneous readings.
+ */
+int get_water_level(char switch_states, int number_of_switches)
+{
+  bool inactive_switch_found = false;
+  int active_switch_count = 0;
+  
+  int i;
+  for (i = 0; i < number_of_switches; ++i)
+  {
+    bool switch_is_active = (switch_states >> i) & 1;
+    if (switch_is_active && !inactive_switch_found)
+      ++active_switch_count;
+    else if (switch_is_active && inactive_switch_found)
+      return -1;
+    else // switch is inactive
+      inactive_switch_found = true;
+  }
+  return active_switch_count;
+}
+
 
 #pragma vector=TIMER0_A0_VECTOR
 __interrupt void timerA0_interrupt_handler()

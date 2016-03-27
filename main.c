@@ -20,8 +20,8 @@ volatile char pump_active; // Controls the water pump (0 = off, 1 = on)
 void toggle_gsm_power(void)
 {
 	// Set output to be LOW
-	P2DIR |= GSM_POWER_CONTROL; // output mode
 	P2OUT &= ~GSM_POWER_CONTROL; // low
+	P2DIR |= GSM_POWER_CONTROL; // output mode
 
 	// Start timer and run for 1.5 seconds, and call the interrupt handler when it's done
 	TA1CTL = TACLR;
@@ -96,6 +96,9 @@ int main(void)
     P1OUT |= POWER_BUTTON;
     P1IE |= POWER_BUTTON; // interrupts
     P1IES |= POWER_BUTTON; // high->low transition
+
+    // Set up gsm power status input
+    P2DIR &= ~GSM_POWER_STATUS; // input
 
     // Initialize the uart and ADC, start ADC conversion
     uart_initialize();

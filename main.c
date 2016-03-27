@@ -92,7 +92,7 @@ int main(void)
   SFRIE1 |= WDTIE;
   _BIS_SR(GIE);
 
-    // Start conversion
+  // Start conversion
 	adc_start_conversion();
 
 	// Check if GSM module is on
@@ -193,12 +193,14 @@ int main(void)
           sent_text = 1; // Do not send the text again (this is for testing purposes--to send another text you have to restart the MSP)
 
           // Delete all stored messages.
+          uart_command_state = CommandStateDeleteSMS;
           tx_buffer_reset();
           strcpy(tx_buffer, "AT+CMGD=1,4\r\n");
           uart_send_command();
         }
+        else
+          uart_enter_idle_mode();
 
-        uart_enter_idle_mode();
         break;
       }
 
@@ -293,7 +295,6 @@ int main(void)
           }
 
           // Check for the "password"
-//						if(strncmp(begin_ptr_sms, "978SolMate", end_ptr_sms - begin_ptr_sms) == 0) // DONT USE THIS HOLY SHIT!!!!
           if(strstr(begin_ptr_sms, "978SolMate"))
           {
             // copy the phone number into ram
@@ -314,7 +315,6 @@ int main(void)
             uart_send_command();
           }
           // Status report?
-//						else if(strncmp(begin_ptr_sms, "What's up", end_ptr_sms - begin_ptr_sms) == 0)// <-- NO!!
           else if(strstr(begin_ptr_sms, "What's up"))
           {
             // Send user the status report
@@ -419,13 +419,19 @@ int main(void)
       case CommandStateSendPhoneSMS:
       case CommandStateSendStatusSMS:
       {
-        if(uart_command_result == UartResultOK)
-          P1OUT &= ~LED_MSP; // red LED off
-
         // Delete all stored messages.
+        uart_command_state = CommandStateDeleteSMS;
         tx_buffer_reset();
         strcpy(tx_buffer, "AT+CMGD=1,4\r\n");
         uart_send_command();
+
+        break;
+      }
+
+      case CommandStateDeleteSMS:
+      {
+        if(uart_command_result == UartResultOK)
+          P1OUT &= ~LED_MSP; // red LED off
 
         uart_enter_idle_mode();
         break;

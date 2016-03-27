@@ -30,6 +30,15 @@ void toggle_gsm_power(void)
 	TA1CTL |= MC__UP; // activate timer
 }
 
+int floatswitch_get_reading(char switches, size_t switch_count)
+{
+  int i, active_switch_count;
+  for (i = 0; i < switch_count; ++i)
+    if ((switches >> i) & 1)
+      ++active_switch_count;
+  return active_switch_count;
+}
+
 // Phone numba
 #define MAX_PHONE_LENGTH 16
 char phone_number[MAX_PHONE_LENGTH]; // like +14445556666
@@ -364,11 +373,12 @@ int main(void)
 							strcat(tx_buffer, "Charge rate: None\r\n");
 
 						// Water depth
-						if(floatswitches == 0x7) // all 3
+            // If a floatswitch is 0 and a higher floatswitch is 1, the reading is invalid.
+						if(floatswitch_get_reading(floatswitches, 3) == 3) // all 3 (111)
 							strcat(tx_buffer, "Water level: High\r\n");
-						else if(floatswitches >= 0x3) // 2
+						else if(floatswitch_get_reading(floatswitches, 3) == 2) // 2 (110)
 							strcat(tx_buffer, "Water level: Medium\r\n");
-						else if(floatswitches >= 0x1) // 1
+						else if(floatswitch_get_reading(floatswitches, 3) == 1) // 1 (100)
 							strcat(tx_buffer, "Water level: Low\r\n");
 						else
 							strcat(tx_buffer, "Water level: None\r\n");

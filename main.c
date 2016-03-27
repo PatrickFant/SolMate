@@ -389,15 +389,36 @@ int main(void)
 
 						// Water depth
             // If a floatswitch is 0 and a higher floatswitch is 1, the reading is invalid.
-						if(floatswitch_get_reading(floatswitches, 3) == 3) // all 3 (111)
+            int water_level = floatswitch_get_reading(floatswitches, 3);
+            switch(water_level)
+            {
+              case 0: // No floatswitches are active.
+                strcat(tx_buffer, "Water level: None\r\n");
+                break;
+              case 1: // Lowest floatswitch is active.
+                strcat(tx_buffer, "Water level: Low\r\n");
+                break;
+              case 2: // Two lowest floatswitches are active.
+                strcat(tx_buffer, "Water level: Medium\r\n");
+                break;
+              case 3: // All three floatswitches are active.
+                strcat(tx_buffer, "Water level: High\r\n");
+                break;
+              default: // Any other combination.
+                strcat(tx_buffer, "Water level: ERR INVALID READING\r\n");
+                break;
+            }
+						/*if (floatswitch_reading == 3) // all 3 (111)
 							strcat(tx_buffer, "Water level: High\r\n");
-						else if(floatswitch_get_reading(floatswitches, 3) == 2) // 2 (110)
+						else if (floatswitch_reading == 2) // 2 (110)
 							strcat(tx_buffer, "Water level: Medium\r\n");
-						else if(floatswitch_get_reading(floatswitches, 3) == 1) // 1 (100)
+						else if (floatswitch_reading == 1) // 1 (100)
 							strcat(tx_buffer, "Water level: Low\r\n");
-						else
+						else if (floatswitch_reading == 0) // 0 (000)
 							strcat(tx_buffer, "Water level: None\r\n");
-
+            else // -1 (error)
+              strcat(tx_buffer, "Water level: ERR (invalid reading)\r\n");
+            */
 						// Bailer
 						if(pump_active)
 							strcat(tx_buffer, "Water pump: On");

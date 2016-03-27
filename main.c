@@ -184,6 +184,11 @@ int main(void)
 					{
 						P1OUT &= ~LED_MSP; // red LED off
 						sent_text = 1; // Do not send the text again (this is for testing purposes--to send another text you have to restart the MSP)
+            
+            // Delete all stored messages.
+            tx_buffer_reset();
+            strcpy(tx_buffer, "AT+CMGD=1,4\r\n");
+            uart_send_command();
 					}
 
 					uart_enter_idle_mode();
@@ -372,7 +377,6 @@ int main(void)
 							strcat(tx_buffer, "Charge rate: None\r\n");
 
 						// Water depth
-            // If a floatswitch is 0 and a higher floatswitch is 1, the reading is invalid.
             int water_level = get_water_level(floatswitches, 3);
             switch(water_level)
             {
@@ -392,17 +396,7 @@ int main(void)
                 strcat(tx_buffer, "Water level: ERR INVALID READING\r\n");
                 break;
             }
-						/*if (floatswitch_reading == 3) // all 3 (111)
-							strcat(tx_buffer, "Water level: High\r\n");
-						else if (floatswitch_reading == 2) // 2 (110)
-							strcat(tx_buffer, "Water level: Medium\r\n");
-						else if (floatswitch_reading == 1) // 1 (100)
-							strcat(tx_buffer, "Water level: Low\r\n");
-						else if (floatswitch_reading == 0) // 0 (000)
-							strcat(tx_buffer, "Water level: None\r\n");
-            else // -1 (error)
-              strcat(tx_buffer, "Water level: ERR (invalid reading)\r\n");
-            */
+
 						// Bailer
 						if(pump_active)
 							strcat(tx_buffer, "Water pump: On");
@@ -420,6 +414,11 @@ int main(void)
 				{
 					if(uart_command_result == UartResultOK)
 						P1OUT &= ~LED_MSP; // red LED off
+          
+          // Delete all stored messages.
+          tx_buffer_reset();
+          strcpy(tx_buffer, "AT+CMGD=1,4\r\n");
+          uart_send_command();
 
 					uart_enter_idle_mode();
 					break;

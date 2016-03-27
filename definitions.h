@@ -17,6 +17,7 @@
 
 #define POWER_BUTTON BIT1 // P1.1
 #define GSM_POWER_CONTROL BIT0 // P2.0
+#define GSM_POWER_STATUS BIT2 // P2.2
 
 // ADC pins
 #define ADC_PIN_BAT_CHARGE BIT0 // P6.0

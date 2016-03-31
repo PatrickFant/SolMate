@@ -17,23 +17,14 @@ volatile char battery_charge; // Contains battery charge value
 volatile char solarpanel_voltage; // panel voltage
 volatile char pump_active; // Controls the water pump (0 = off, 1 = on)
 
-void toggle_gsm_power(void)
-{
-	// Set output to be LOW
-	P2OUT &= ~GSM_POWER_CONTROL; // low
-	P2DIR |= GSM_POWER_CONTROL; // output mode
 
-	// Start timer and run for 1.5 seconds, and call the interrupt handler when it's done
-	TA1CTL = TACLR;
-	TA1CTL = TASSEL__ACLK | ID__8 | MC__STOP; // aux clock, divide by 8 (so 4096 hz)
-	TA1CCTL0 = CCIE; // interrupt enable for ccr0
-	TA1CCR0 = 6144 - 1; // 1.5 secs (4096 * 1.5)
-	TA1CTL |= MC__UP; // activate timer
-}
+// Toggles power for the GSM module.
+void toggle_gsm_power(void);
 
 // Returns an int representing the water level, so long as the floatswitch
 // reading is valid.
 int get_water_level(char switches, int number_of_switches);
+
 
 // Phone numba
 #define MAX_PHONE_LENGTH 16
@@ -445,6 +436,24 @@ int main(void)
 }
 
 
+// FUNCTIONS ==================================================================
+
+
+void toggle_gsm_power(void)
+{
+	// Set output to be LOW
+	P2OUT &= ~GSM_POWER_CONTROL; // low
+	P2DIR |= GSM_POWER_CONTROL; // output mode
+
+	// Start timer and run for 1.5 seconds, and call the interrupt handler when it's done
+	TA1CTL = TACLR;
+	TA1CTL = TASSEL__ACLK | ID__8 | MC__STOP; // aux clock, divide by 8 (so 4096 hz)
+	TA1CCTL0 = CCIE; // interrupt enable for ccr0
+	TA1CCR0 = 6144 - 1; // 1.5 secs (4096 * 1.5)
+	TA1CTL |= MC__UP; // activate timer
+}
+
+
 /**
  * A floatswitch reading is valid if no active switch is higher than an
  * inactive switch.  This function iterates through the floatswitches from
@@ -469,6 +478,9 @@ int get_water_level(char switch_states, int number_of_switches)
   }
   return active_switch_count;
 }
+
+
+// INTERRUPT HANDLERS =========================================================
 
 
 #pragma vector=TIMER0_A0_VECTOR

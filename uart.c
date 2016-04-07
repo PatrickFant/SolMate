@@ -46,7 +46,7 @@ void uart_initialize()
 	sent_text = 0;
 
 	// Enable uart mode on the correct pins
-	P3SEL |= UART_PIN_RX | UART_PIN_TX;
+	GSM_PORT_SEL |= UART_PIN_RX | UART_PIN_TX;
 
 	// Configure the USCI for uart
 	UCA0CTL1 |= UCSWRST; // Keep the USCI in reset mode

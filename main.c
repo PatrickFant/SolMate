@@ -35,6 +35,9 @@ int main(void)
   // Stop watchdog timer for now
   WDTCTL = WDTPW | WDTHOLD;
 
+  // Enable JTAG (keep this line here)
+  SYSCTL |= SYSJTAGPIN;
+
   // Initialize state variables
 //floatswitch_active = 0;
   floatswitches = 0;
@@ -48,29 +51,35 @@ int main(void)
     strncpy(phone_number, PHONE_ADDRESS, MAX_PHONE_LENGTH); // copy from flash into ram
 
   // Set up float switches
-  P1DIR &= ~(FLOATSWITCH_0 | FLOATSWITCH_1 | FLOATSWITCH_2);
-  P1REN |= FLOATSWITCH_0 | FLOATSWITCH_1 | FLOATSWITCH_2;
-  P1OUT |= FLOATSWITCH_0 | FLOATSWITCH_1 | FLOATSWITCH_2;
+  FLOAT_PORT_DIR &= ~(FLOATSWITCH_0 | FLOATSWITCH_1 | FLOATSWITCH_2);
+  FLOAT_PORT_REN |= FLOATSWITCH_0 | FLOATSWITCH_1 | FLOATSWITCH_2;
+  FLOAT_PORT_OUT |= FLOATSWITCH_0 | FLOATSWITCH_1 | FLOATSWITCH_2;
 
   // Set up water pump and solarpanel on/off
-  P6DIR |= PUMP_CONTROL | SOLARPANEL_CONTROL;
-  P6OUT &= ~(PUMP_CONTROL | SOLARPANEL_CONTROL);
+  PUMPSOLAR_PORT_DIR |= PUMP_CONTROL | SOLARPANEL_CONTROL;
+  PUMPSOLAR_PORT_OUT &= ~(PUMP_CONTROL | SOLARPANEL_CONTROL);
 
   // Set up msp430 LEDs
-  P1DIR |= LED_MSP;
+  LED_PORT_DIR |= LED_MSP;
+  LED_PORT_OUT &= ~LED_MSP;
+//  P1DIR |= LED_MSP;
 //    P4DIR |= LED_MSP_2;
-  P1OUT &= ~LED_MSP;
+//  P1OUT &= ~LED_MSP;
 //    P4OUT &= ~LED_MSP_2;
 
   // Set up gsm 'power button'
-  P1DIR &= ~POWER_BUTTON;
-  P1REN |= POWER_BUTTON;
-  P1OUT |= POWER_BUTTON;
-  P1IE |= POWER_BUTTON; // interrupts
-  P1IES |= POWER_BUTTON; // high->low transition
+//  P1DIR &= ~POWER_BUTTON;
+//  P1REN |= POWER_BUTTON;
+//  P1OUT |= POWER_BUTTON;
+//  P1IE |= POWER_BUTTON; // interrupts
+//  P1IES |= POWER_BUTTON; // high->low transition
 
   // Set up gsm power status input
-  P2DIR &= ~GSM_POWER_STATUS; // input
+  GSM_PORT_DIR &= ~GSM_POWER_STATUS; // input
+
+  // Power on the voltage regulator for the gsm
+  GSMPOWER_PORT_DIR |= GSMPOWER_ENABLE_PIN; // output mode
+  GSMPOWER_PORT_OUT |= GSMPOWER_ENABLE_PIN;
 
   // Initialize the uart and ADC, start ADC conversion
   uart_initialize();
@@ -87,21 +96,18 @@ int main(void)
 	adc_start_conversion();
 
 	// Check if GSM module is on
-	while(!(P2IN & GSM_POWER_STATUS)) // is off
+	while(!(GSM_PORT_IN & GSM_POWER_STATUS)) // is off
 	{
 	  toggle_gsm_power();
 	  __delay_cycles(15728640); // 15 second wait
 	}
 
   // Send an AT first
-	P1OUT |= LED_MSP;
+	LED_PORT_OUT |= LED_MSP;
 
 	tx_buffer_reset();
   strcpy(tx_buffer, "AT\r\n");
   uart_send_command();
-
-  // Stop watchdog timer
-  WDTCTL = WDTPW | WDTHOLD;
 
   // Start up Timer A0
   TA0CTL = TACLR; // clear first
@@ -126,14 +132,14 @@ int main(void)
           if(uart_command_result == UartResultOK)
           {
             // Send ATE0 because we do not need a copy of what we send
-//    					uart_command_state = CommandStateTurnOffEcho;
-//    					tx_buffer_reset();
-//    					strcpy(tx_buffer, "ATE0\r\n");
-//    					uart_send_command();
-            uart_command_state = CommandStateGoToSMSMode;
-          tx_buffer_reset();
-          strcpy(tx_buffer, "AT+CMGF=1\r\n");
-          uart_send_command();
+    					uart_command_state = CommandStateTurnOffEcho;
+    					tx_buffer_reset();
+    					strcpy(tx_buffer, "ATE0\r\n");
+    					uart_send_command();
+//            uart_command_state = CommandStateGoToSMSMode;
+//          tx_buffer_reset();
+//          strcpy(tx_buffer, "AT+CMGF=1\r\n");
+//          uart_send_command();
           }
           break;
         }
@@ -155,7 +161,7 @@ int main(void)
       {
         if(uart_command_result == UartResultOK)
         {
-          P1OUT &= ~LED_MSP; // red LED off
+          LED_PORT_OUT &= ~LED_MSP; // red LED off
 
           // We are now ready to send a text whenever the system needs to
           uart_enter_idle_mode();
@@ -180,7 +186,7 @@ int main(void)
       {
         if(uart_command_result == UartResultOK)
         {
-          P1OUT &= ~LED_MSP; // red LED off
+          LED_PORT_OUT &= ~LED_MSP; // red LED off
           sent_text = 1; // Do not send the text again (this is for testing purposes--to send another text you have to restart the MSP)
 
           // Delete all stored messages.
@@ -197,7 +203,7 @@ int main(void)
 
       case CommandStateUnsolicitedMsg: // Received a message from the cell module
       {
-        P1OUT |= LED_MSP; // red LED on
+        LED_PORT_OUT |= LED_MSP; // red LED on
 
         // Check what kind of code this is..
         // --SMS--
@@ -226,13 +232,13 @@ int main(void)
           strcat(tx_buffer, "\r\n");
 
           // Send the command
-          P1OUT &= ~LED_MSP; // red LED on
+          LED_PORT_OUT &= ~LED_MSP; // red LED on
           uart_command_state = CommandStateReadSMS;
           uart_send_command();
         }
         else // unrecognized
         {
-          P1OUT &= ~LED_MSP;
+          LED_PORT_OUT &= ~LED_MSP;
           uart_enter_idle_mode();
         }
 
@@ -241,7 +247,7 @@ int main(void)
 
       case CommandStateReadSMS:
       {
-        P1OUT |= LED_MSP; // red LED on
+        LED_PORT_OUT |= LED_MSP; // red LED on
         if(uart_command_result == UartResultOK)
         {
           // +CMGR: "<status>","<origin number>","<??>","<timestamp>"\r\n
@@ -297,7 +303,7 @@ int main(void)
             flash_write_phone_number(phone_number, MAX_PHONE_LENGTH);
 
             // Send the user an acknowledgement
-            P1OUT &= ~LED_MSP; // red LED off
+            LED_PORT_OUT &= ~LED_MSP; // red LED off
             uart_command_state = CommandStatePreparePhoneSMS;
             tx_buffer_reset();
             strcpy(tx_buffer, "AT+CMGS=\"");
@@ -309,7 +315,7 @@ int main(void)
           else if(strstr(begin_ptr_sms, "What's up"))
           {
             // Send user the status report
-            P1OUT &= ~LED_MSP;
+            LED_PORT_OUT &= ~LED_MSP;
             uart_command_state = CommandStatePrepareStatusSMS;
             tx_buffer_reset();
             strcpy(tx_buffer, "AT+CMGS=\"");
@@ -319,7 +325,7 @@ int main(void)
           }
           else // Unrecognized text
           {
-            P1OUT &= ~LED_MSP;
+            LED_PORT_OUT &= ~LED_MSP;
             uart_enter_idle_mode();
           }
         }
@@ -331,7 +337,7 @@ int main(void)
 
       case CommandStatePreparePhoneSMS:
       {
-        P1OUT |= LED_MSP; // red LED on
+        LED_PORT_OUT |= LED_MSP; // red LED on
 
         if(uart_command_result == UartResultInput)
         {
@@ -346,7 +352,7 @@ int main(void)
 
       case CommandStatePrepareStatusSMS:
       {
-        P1OUT |= LED_MSP; // red led
+        LED_PORT_OUT |= LED_MSP; // red led
         if(uart_command_result == UartResultInput)
         {
           // Put together the status text
@@ -422,7 +428,7 @@ int main(void)
       case CommandStateDeleteSMS:
       {
         if(uart_command_result == UartResultOK)
-          P1OUT &= ~LED_MSP; // red LED off
+          LED_PORT_OUT &= ~LED_MSP; // red LED off
 
         uart_enter_idle_mode();
         break;
@@ -442,8 +448,8 @@ int main(void)
 void toggle_gsm_power(void)
 {
 	// Set output to be LOW
-	P2OUT &= ~GSM_POWER_CONTROL; // low
-	P2DIR |= GSM_POWER_CONTROL; // output mode
+	GSM_PORT_OUT &= ~GSM_POWER_CONTROL; // low
+	GSM_PORT_DIR |= GSM_POWER_CONTROL; // output mode
 
 	// Start timer and run for 1.5 seconds, and call the interrupt handler when it's done
 	TA1CTL = TACLR;
@@ -509,7 +515,7 @@ __interrupt void timerA0_interrupt_handler()
 				// There is not enough charge and too much water, notify over text
 				if(sent_text == 0 && uart_command_state == CommandStateIdle)
 				{
-					P1OUT |= LED_MSP; // red LED on
+				  LED_PORT_OUT |= LED_MSP; // red LED on
 
 					// Is there a phone number programmed? If not then don't send the sms
 					if(phone_number[0] != '\0')
@@ -534,13 +540,13 @@ __interrupt void timerA0_interrupt_handler()
 	// Set water pump output and solar panel output
 	if(pump_active)
 	{
-		P6OUT |= PUMP_CONTROL;
-		P6OUT &= ~SOLARPANEL_CONTROL;
+		PUMPSOLAR_PORT_OUT |= PUMP_CONTROL;
+		PUMPSOLAR_PORT_OUT &= ~SOLARPANEL_CONTROL;
 	}
 	else
 	{
-		P6OUT &= ~PUMP_CONTROL;
-		P6OUT |= SOLARPANEL_CONTROL;
+	  PUMPSOLAR_PORT_OUT &= ~PUMP_CONTROL;
+	  PUMPSOLAR_PORT_OUT |= SOLARPANEL_CONTROL;
 	}
 
 	// New conversion
@@ -554,10 +560,10 @@ __interrupt void timerA1_interrupt_handler()
 	TA1CTL = TACLR;
 
 	// Set gsm power output back to input/floating mode
-	P2DIR &= ~GSM_POWER_CONTROL;
+	GSM_PORT_DIR &= ~GSM_POWER_CONTROL;
 
 	// Enable port1 interrupts again
-	P1IE |= POWER_BUTTON;
+//	P1IE |= POWER_BUTTON;
 }
 
 #pragma vector=PORT1_VECTOR

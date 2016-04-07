@@ -7,7 +7,7 @@
 // Set up the analog to digital converter
 void adc_initialize()
 {
-	P6SEL |= ADC_PIN_BAT_CHARGE | ADC_PIN_SOLARPANEL_VOLTAGE; // Set up pins
+	ADC_PORT_SEL |= ADC_PIN_BAT_CHARGE | ADC_PIN_SOLARPANEL_VOLTAGE; // Set up pins
 
 	// Set up ADC //
 	ADC12CTL0 = ADC12ON | ADC12MSC | ADC12SHT0_2; // Turn on ADC, enable multiple samples, set speed

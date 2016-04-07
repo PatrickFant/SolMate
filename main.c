@@ -93,14 +93,14 @@ int main(void)
   _BIS_SR(GIE);
 
   // Start conversion
-	adc_start_conversion();
+  adc_start_conversion();
 
-	// Check if GSM module is on
-	while(!(GSM_PORT_IN & GSM_POWER_STATUS)) // is off
-	{
-	  toggle_gsm_power();
-	  __delay_cycles(15728640); // 15 second wait
-	}
+  // Check if GSM module is on
+  while(!(GSM_PORT_IN & GSM_POWER_STATUS)) // is off
+  {
+    toggle_gsm_power();
+    __delay_cycles(15728640); // wait
+  }
 
   // Send an AT first
 	LED_PORT_OUT |= LED_MSP;
@@ -127,22 +127,18 @@ int main(void)
     {
       switch(uart_command_state)
       {
-        case CommandStateSendingAT:
+      case CommandStateSendingAT:
+      {
+        if(uart_command_result == UartResultOK)
         {
-          if(uart_command_result == UartResultOK)
-          {
-            // Send ATE0 because we do not need a copy of what we send
-    					uart_command_state = CommandStateTurnOffEcho;
-    					tx_buffer_reset();
-    					strcpy(tx_buffer, "ATE0\r\n");
-    					uart_send_command();
-//            uart_command_state = CommandStateGoToSMSMode;
-//          tx_buffer_reset();
-//          strcpy(tx_buffer, "AT+CMGF=1\r\n");
-//          uart_send_command();
-          }
-          break;
+          // Send ATE0 because we do not need a copy of what we send
+            uart_command_state = CommandStateTurnOffEcho;
+            tx_buffer_reset();
+            strcpy(tx_buffer, "ATE0\r\n");
+            uart_send_command();
         }
+        break;
+      }
       case CommandStateTurnOffEcho: // Got a response after sending AT
       {
         if(uart_command_result == UartResultOK)
@@ -165,6 +161,23 @@ int main(void)
 
           // We are now ready to send a text whenever the system needs to
           uart_enter_idle_mode();
+        }
+        else if(uart_command_result == UartResultError) // No service
+        {
+          // Set up timer
+          TA2CTL = TACLR;
+          TA2CTL = TASSEL__ACLK | ID__8 | MC__STOP;
+          TA2CCTL0 = CCIE;
+          TA2CCR0 = 40960; // 4096 times 10 -> 10 seconds
+
+          // Try cmgf again
+          uart_command_state = CommandStateGoToSMSMode;
+          tx_buffer_reset();
+          strcpy(tx_buffer, "AT+CMGF=1\r\n");
+
+          // Enable timer, go to sleep (uart will be disabled too because LPM2)
+          TA2CTL |= MC__UP;
+          LPM2;
         }
         break;
       }
@@ -564,6 +577,14 @@ __interrupt void timerA1_interrupt_handler()
 
 	// Enable port1 interrupts again
 //	P1IE |= POWER_BUTTON;
+}
+
+#pragma vector=TIMER2_A0_VECTOR
+__interrupt void timerA2_interrupt_handler() // for TA2CCR0 only
+{
+  // Finished waiting, now try again and send the command
+  uart_send_command();
+  LPM2_EXIT;
 }
 
 #pragma vector=PORT1_VECTOR

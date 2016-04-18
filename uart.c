@@ -27,6 +27,11 @@ const char *result_OK_ptr; // This gets incremented when a received character ma
 const char *result_ERROR_ptr;
 const char *result_INPUT_ptr;
 
+// Result codes
+const char code_cmti[] = "+CMTI:";
+const char *code_cmti_ptr;
+char code_received;
+
 // Called when a uart command is done
 //void completion_handler(int result);
 
@@ -41,9 +46,11 @@ void uart_initialize()
 	result_OK_ptr = result_OK; // Start at beginning of array
 	result_ERROR_ptr = result_ERROR;
 	result_INPUT_ptr = result_INPUT;
+	code_cmti_ptr = code_cmti;
 	uart_command_has_completed = 0;
 	uart_command_result = UartResultUndefined;
 	sent_text = 0;
+	code_received = 0;
 
 	// Enable uart mode on the correct pins
 	GSM_PORT_SEL |= UART_PIN_RX | UART_PIN_TX;
@@ -87,20 +94,42 @@ __interrupt void uart_interrupt_handler()
 				// For unsolicited messages
 				if(uart_command_state == CommandStateIdle)
 				{
-					// Check for \r\n
-					if(rx_buffer[rx_buffer_index - 1] == '\r' && rx_byte == '\n')
-					{
-//						P4OUT &= ~LED_MSP_2; // green LED off
-						P1OUT |= LED_MSP; // red LED on
+				  // Already recognized a code or not
+				  if(code_received)
+				  {
+            // Check for \r\n
+            if(rx_buffer[rx_buffer_index - 1] == '\r' && rx_byte == '\n')
+            {
+              LED_PORT_OUT |= LED_MSP; // red LED on
+              code_received = 0; // reset the flag
 
-						// Stop here and go to main loop to decode the received message
-						uart_state = UartStateIdle;
-						UCA0IE &= ~UCRXIE; // Turn off receive interrupts for now
-						uart_command_has_completed = 1;
-						uart_command_state = CommandStateUnsolicitedMsg; // Going to process it in the main loop
-						LPM0_EXIT; // Turn on cpu
-						return;
-					}
+              // Stop here and go to main loop to decode the received message
+              uart_state = UartStateIdle;
+              UCA0IE &= ~UCRXIE; // Turn off receive interrupts for now
+              uart_command_has_completed = 1;
+              uart_command_state = CommandStateUnsolicitedMsg; // Going to process it in the main loop
+              LPM0_EXIT; // Turn on cpu
+            }
+				  }
+				  else
+				  {
+				    // Check for codes
+				    if(rx_byte == *code_cmti_ptr) // match
+				    {
+				      code_cmti_ptr++;
+				      if(*code_cmti_ptr == '\0') // end of string
+				        code_received = 1;
+				    }
+            else // wrong character, start over
+              if(rx_byte == code_cmti[0])
+                code_cmti_ptr = code_cmti + 1; // start of new (possible) match
+              else
+                code_cmti_ptr = code_cmti; // no match at all right now
+				  }
+
+				  // Increment the buffer index
+          rx_buffer_index++;
+					return; // don't need to check for OK,ERROR,> , etc... when it's idle
 				}
 
 				// The following string-checking code is a limited version of the KMP algorithm. It doesn't
@@ -206,6 +235,7 @@ void rx_buffer_reset()
 	result_OK_ptr = result_OK;
 	result_ERROR_ptr = result_ERROR;
 	result_INPUT_ptr = result_INPUT;
+	code_cmti_ptr = code_cmti;
 }
 
 // Clears out the transmit buffer and sets the buffer index to zero

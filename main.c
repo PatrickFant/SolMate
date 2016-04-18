@@ -51,9 +51,9 @@ int main(void)
     strncpy(phone_number, PHONE_ADDRESS, MAX_PHONE_LENGTH); // copy from flash into ram
 
   // Set up float switches
-  FLOAT_PORT_DIR &= ~(FLOATSWITCH_0 | FLOATSWITCH_1 | FLOATSWITCH_2);
-  FLOAT_PORT_REN |= FLOATSWITCH_0 | FLOATSWITCH_1 | FLOATSWITCH_2;
-  FLOAT_PORT_OUT |= FLOATSWITCH_0 | FLOATSWITCH_1 | FLOATSWITCH_2;
+  FLOAT_PORT_DIR &= ~(FLOATSWITCH_0 | FLOATSWITCH_1 | FLOATSWITCH_2 | FLOATSWITCH_3 | FLOATSWITCH_4);
+  FLOAT_PORT_REN |= FLOATSWITCH_0 | FLOATSWITCH_1 | FLOATSWITCH_2 | FLOATSWITCH_3 | FLOATSWITCH_4;
+  FLOAT_PORT_OUT |= FLOATSWITCH_0 | FLOATSWITCH_1 | FLOATSWITCH_2 | FLOATSWITCH_3 | FLOATSWITCH_4;
 
   // Set up water pump and solarpanel on/off
   PUMPSOLAR_PORT_DIR |= PUMP_CONTROL | SOLARPANEL_CONTROL;
@@ -67,7 +67,7 @@ int main(void)
 //  P1OUT &= ~LED_MSP;
 //    P4OUT &= ~LED_MSP_2;
 
-  // Set up gsm 'power button'
+  // Set up gsm 'power button' (not used now)
 //  P1DIR &= ~POWER_BUTTON;
 //  P1REN |= POWER_BUTTON;
 //  P1OUT |= POWER_BUTTON;
@@ -99,7 +99,7 @@ int main(void)
   while(!(GSM_PORT_IN & GSM_POWER_STATUS)) // is off
   {
     toggle_gsm_power();
-    __delay_cycles(15728640); // wait
+    __delay_cycles(20000000); // wait
   }
 
   // Send an AT first
@@ -157,13 +157,15 @@ int main(void)
       {
         if(uart_command_result == UartResultOK)
         {
-          LED_PORT_OUT &= ~LED_MSP; // red LED off
+          LED_PORT_OUT &= ~(LED_MSP | LED_MSP_2); // leds off
 
           // We are now ready to send a text whenever the system needs to
           uart_enter_idle_mode();
         }
         else if(uart_command_result == UartResultError) // No service
         {
+          LED_PORT_OUT |= LED_MSP_2;
+
           // Set up timer
           TA2CTL = TACLR;
           TA2CTL = TASSEL__ACLK | ID__8 | MC__STOP;
@@ -374,11 +376,11 @@ int main(void)
           strcpy(tx_buffer, "Msg from Sol-Mate: Here's your status report.\r\n");
 
           // Battery status
-          if(battery_charge > 248) // 12.9V
+          if(battery_charge > 228) // 12.9V
             strcat(tx_buffer, "Battery level: Full\r\n");
-          else if(battery_charge > 230) // About 50% - 12.55V
+          else if(battery_charge > 210) // About 50% - 12.55V
             strcat(tx_buffer, "Battery level: Medium\r\n");
-          else if(battery_charge > 217) // 12.2V
+          else if(battery_charge > 190) // 12.2V
             strcat(tx_buffer, "Battery level: Low\r\n");
           else
             strcat(tx_buffer, "Battery level: Very Low\r\n");
@@ -394,20 +396,26 @@ int main(void)
             strcat(tx_buffer, "Charge rate: None\r\n");
 
           // Water depth
-          int water_level = get_water_level(floatswitches, 3);
+          int water_level = get_water_level(floatswitches, 5);
           switch(water_level)
           {
             case 0: // No floatswitches are active.
               strcat(tx_buffer, "Water level: None\r\n");
               break;
             case 1: // Lowest floatswitch is active.
-              strcat(tx_buffer, "Water level: Low\r\n");
+              strcat(tx_buffer, "Water level: Very low\r\n");
               break;
             case 2: // Two lowest floatswitches are active.
-              strcat(tx_buffer, "Water level: Medium\r\n");
+              strcat(tx_buffer, "Water level: Low\r\n");
               break;
             case 3: // All three floatswitches are active.
+              strcat(tx_buffer, "Water level: Medium\r\n");
+              break;
+            case 4:
               strcat(tx_buffer, "Water level: High\r\n");
+              break;
+            case 5:
+              strcat(tx_buffer, "Water level: Very high\r\n");
               break;
             default: // Any other combination.
               strcat(tx_buffer, "Water level: ERR INVALID READING\r\n");
@@ -505,47 +513,46 @@ int get_water_level(char switch_states, int number_of_switches)
 #pragma vector=TIMER0_A0_VECTOR
 __interrupt void timerA0_interrupt_handler()
 {
-	// Toggle float switch variable
-//	floatswitch_active = (P6IN & INPUT_FLOATSWITCH) ? 0 : 1; // false means ground/zero -> switch pressed (1)
-
 	// Check the switches
 	floatswitches = 0;
-	floatswitches |= (P1IN & FLOATSWITCH_0) ? 0 : 0x1; // false means ground -> switch active
-	floatswitches |= (P1IN & FLOATSWITCH_1) ? 0 : 0x2; // false means ground -> switch active
-	floatswitches |= (P1IN & FLOATSWITCH_2) ? 0 : 0x4; // false means ground -> switch active
+	floatswitches |= (P1IN & FLOATSWITCH_0) ? 0x1 : 0; // false means ground -> switch NOT active
+	floatswitches |= (P1IN & FLOATSWITCH_1) ? 0x2 : 0;
+	floatswitches |= (P1IN & FLOATSWITCH_2) ? 0x4 : 0;
+	floatswitches |= (P1IN & FLOATSWITCH_3) ? 0x8 : 0;
+	floatswitches |= (P1IN & FLOATSWITCH_4) ? 0x10 : 0;
 
 	// Check water depth
 	if(floatswitches > 0)// || water_depth > 70) // water depth values go from 0 to 255
 	{
-		if(battery_charge > 100) // around 40% (100 out of 255)
+//		if(battery_charge > 100) // around 40% (100 out of 255)
 			pump_active = 1;
-		else
-		{
-			pump_active = 0;
-
-			if(floatswitches == 0x7) // All floatswitches are on (7 == 4+2+1)
-			{
-				// There is not enough charge and too much water, notify over text
-				if(sent_text == 0 && uart_command_state == CommandStateIdle)
-				{
-				  LED_PORT_OUT |= LED_MSP; // red LED on
-
-					// Is there a phone number programmed? If not then don't send the sms
-					if(phone_number[0] != '\0')
-					{
-						// Send the text!!
-						uart_command_state = CommandStatePrepareWarningSMS;
-						tx_buffer_reset();
-						strcpy(tx_buffer, "AT+CMGS=\"");
-						strcat(tx_buffer, phone_number);
-						strcat(tx_buffer, "\"\r\n");
-						uart_send_command();
-
-						sent_text = 1;
-					}
-				}
-			}
-		}
+//		else
+//		{
+//			pump_active = 0;
+//
+//			if(floatswitches == 0x7) // All floatswitches are on (7 == 4+2+1)
+//			{
+//				// There is not enough charge and too much water, notify over text
+//				if(sent_text == 0 && uart_command_state == CommandStateIdle)
+//				{
+//				  LED_PORT_OUT |= LED_MSP; // red LED on
+//
+//					// Is there a phone number programmed? If not then don't send the sms
+//					if(phone_number[0] != '\0')
+//					{
+//						// Send the text!!
+//						/*uart_command_state = CommandStatePrepareWarningSMS;
+//						tx_buffer_reset();
+//						strcpy(tx_buffer, "AT+CMGS=\"");
+//						strcat(tx_buffer, phone_number);
+//						strcat(tx_buffer, "\"\r\n");
+//						uart_send_command();
+//
+//						sent_text = 1;*/
+//					}
+//				}
+//			}
+//		}
 	}
 	else // No water
 		pump_active = 0;
@@ -574,9 +581,6 @@ __interrupt void timerA1_interrupt_handler()
 
 	// Set gsm power output back to input/floating mode
 	GSM_PORT_DIR &= ~GSM_POWER_CONTROL;
-
-	// Enable port1 interrupts again
-//	P1IE |= POWER_BUTTON;
 }
 
 #pragma vector=TIMER2_A0_VECTOR
@@ -585,22 +589,6 @@ __interrupt void timerA2_interrupt_handler() // for TA2CCR0 only
   // Finished waiting, now try again and send the command
   uart_send_command();
   LPM2_EXIT;
-}
-
-#pragma vector=PORT1_VECTOR
-__interrupt void port1_interrupt_handler()
-{
-	switch(P1IV)
-	{
-	case P1IV_P1IFG1:
-	{
-		toggle_gsm_power();
-		P1IE &= ~POWER_BUTTON; // disable port1 interrupts until the timer is done
-		break;
-	}
-	default:
-		break;
-	}
 }
 
 #pragma vector=ADC12_VECTOR

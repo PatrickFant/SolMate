@@ -80,6 +80,9 @@
 
 #endif
 
+#define TIMEOUT_SMS 65535 //(Don't set this more than 65535) 15 seconds with a 4096hz timer
 #define MAX_SMS_INDEX_DIGITS 5 // sms index can have up to 5 digits (99999)
+#define BATTERY_THRESHOLD_LOW 140 // when the bat was "charged", is pumping, and should stop now
+#define BATTERY_THRESHOLD_HIGH 200 // when the bat was "discharged", not pumping, and can start now
 
 #endif /* DEFINITIONS_H_ */

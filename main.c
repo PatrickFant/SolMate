@@ -16,7 +16,11 @@ volatile char floatswitches; // Contains water depth value (each bit represents 
 volatile char battery_charge; // Contains battery charge value
 volatile char solarpanel_voltage; // panel voltage
 volatile char pump_active; // Controls the water pump (0 = off, 1 = on)
+volatile char battery_can_drain; // 0 -> need to wait for bat to charge to use pump
+                                  // 1 -> can pump until battery reaches its lower threshold
 
+// Keep track of time
+volatile char tryagain_timeelapsed; // counts units of time (we can specify how long the units are)
 
 // Toggles power for the GSM module.
 void toggle_gsm_power(void);
@@ -113,7 +117,7 @@ int main(void)
   TA0CTL = TACLR; // clear first
   TA0CTL = TASSEL__ACLK | ID__8 | MC__STOP; // auxiliary clock (32.768 kHz), divide by 8 (4096 Hz), interrupt enable, stop mode
   TA0CCTL0 = CCIE; // enable capture/compare interrupt
-  TA0CCR0 = 2047; // reduces rate to 2 times/sec
+  TA0CCR0 = 4096; // reduces rate to 1 times/sec
   TA0CTL |= MC__UP; // start the timer in up mode (counts to TA0CCR0 then resets to 0)
 
   // Turn CPU off
@@ -162,25 +166,8 @@ int main(void)
           // We are now ready to send a text whenever the system needs to
           uart_enter_idle_mode();
         }
-        else if(uart_command_result == UartResultError) // No service
-        {
-          LED_PORT_OUT |= LED_MSP_2;
-
-          // Set up timer
-          TA2CTL = TACLR;
-          TA2CTL = TASSEL__ACLK | ID__8 | MC__STOP;
-          TA2CCTL0 = CCIE;
-          TA2CCR0 = 40960; // 4096 times 10 -> 10 seconds
-
-          // Try cmgf again
-          uart_command_state = CommandStateGoToSMSMode;
-          tx_buffer_reset();
-          strcpy(tx_buffer, "AT+CMGF=1\r\n");
-
-          // Enable timer, go to sleep (uart will be disabled too because LPM2)
-          TA2CTL |= MC__UP;
-          LPM2;
-        }
+        else
+          uart_enter_idle_mode();
         break;
       }
 
@@ -209,6 +196,27 @@ int main(void)
           tx_buffer_reset();
           strcpy(tx_buffer, "AT+CMGD=1,4\r\n");
           uart_send_command();
+        }
+        else if(uart_command_result == UartResultError) // sms failed to send
+        {
+          LED_PORT_OUT |= LED_MSP;
+
+          // Set up timer to try again
+          TA2CTL = TACLR;
+          TA2CTL = TASSEL__ACLK | ID__8 | MC__STOP;
+          TA2CCTL0 = CCIE;
+          TA2CCR0 = TIMEOUT_SMS;
+
+          // Prepare again
+          uart_command_state = CommandStatePrepareWarningSMS;
+          tx_buffer_reset();
+          strcpy(tx_buffer, "AT+CMGS=\"");
+          strcat(tx_buffer, phone_number);
+          strcat(tx_buffer, "\"\r\n");
+
+          // Enable timer, go to sleep (uart will be disabled too because LPM2)
+          TA2CTL |= MC__UP;
+          LPM2;
         }
         else
           uart_enter_idle_mode();
@@ -435,13 +443,70 @@ int main(void)
       }
 
       case CommandStateSendPhoneSMS:
+      {
+        if(uart_command_result == UartResultOK)
+        {
+          // Delete all stored messages.
+          uart_command_state = CommandStateDeleteSMS;
+          tx_buffer_reset();
+          strcpy(tx_buffer, "AT+CMGD=1,4\r\n");
+          uart_send_command();
+        }
+        else if(uart_command_result == UartResultError) // sms failed to send
+        {
+          LED_PORT_OUT |= LED_MSP;
+
+          // Set up timer to try again
+          TA2CTL = TACLR;
+          TA2CTL = TASSEL__ACLK | ID__8 | MC__STOP;
+          TA2CCTL0 = CCIE;
+          TA2CCR0 = TIMEOUT_SMS; // 4096 times 10 -> 10 seconds
+
+          // Prepare again
+          uart_command_state = CommandStatePreparePhoneSMS;
+          tx_buffer_reset();
+          strcpy(tx_buffer, "AT+CMGS=\"");
+          strcat(tx_buffer, phone_number);
+          strcat(tx_buffer, "\"\r\n");
+
+          // Enable timer, go to sleep (uart will be disabled too because LPM2)
+          TA2CTL |= MC__UP;
+          LPM2;
+        }
+
+        break;
+      }
       case CommandStateSendStatusSMS:
       {
-        // Delete all stored messages.
-        uart_command_state = CommandStateDeleteSMS;
-        tx_buffer_reset();
-        strcpy(tx_buffer, "AT+CMGD=1,4\r\n");
-        uart_send_command();
+        if(uart_command_result == UartResultOK)
+        {
+          // Delete all stored messages.
+          uart_command_state = CommandStateDeleteSMS;
+          tx_buffer_reset();
+          strcpy(tx_buffer, "AT+CMGD=1,4\r\n");
+          uart_send_command();
+        }
+        else if(uart_command_result == UartResultError) // sms failed to send
+        {
+          LED_PORT_OUT |= LED_MSP;
+
+          // Set up timer to try again
+          TA2CTL = TACLR;
+          TA2CTL = TASSEL__ACLK | ID__8 | MC__STOP;
+          TA2CCTL0 = CCIE;
+          TA2CCR0 = TIMEOUT_SMS; // 4096 times 10 -> 10 seconds
+
+          // Prepare again
+          uart_command_state = CommandStatePrepareStatusSMS;
+          tx_buffer_reset();
+          strcpy(tx_buffer, "AT+CMGS=\"");
+          strcat(tx_buffer, phone_number);
+          strcat(tx_buffer, "\"\r\n");
+
+          // Enable timer, go to sleep (uart will be disabled too because LPM2)
+          TA2CTL |= MC__UP;
+          LPM2;
+        }
 
         break;
       }
@@ -521,38 +586,44 @@ __interrupt void timerA0_interrupt_handler()
 	floatswitches |= (P1IN & FLOATSWITCH_3) ? 0x8 : 0;
 	floatswitches |= (P1IN & FLOATSWITCH_4) ? 0x10 : 0;
 
+	// Figure out whether the bat is low or not
+	if(battery_charge > BATTERY_THRESHOLD_HIGH)
+	  battery_can_drain = 1;
+	else if(battery_charge < BATTERY_THRESHOLD_LOW)
+	  battery_can_drain = 0;
+
 	// Check water depth
 	if(floatswitches > 0)// || water_depth > 70) // water depth values go from 0 to 255
 	{
-//		if(battery_charge > 100) // around 40% (100 out of 255)
-			pump_active = 1;
-//		else
-//		{
-//			pump_active = 0;
-//
-//			if(floatswitches == 0x7) // All floatswitches are on (7 == 4+2+1)
-//			{
-//				// There is not enough charge and too much water, notify over text
-//				if(sent_text == 0 && uart_command_state == CommandStateIdle)
-//				{
-//				  LED_PORT_OUT |= LED_MSP; // red LED on
-//
-//					// Is there a phone number programmed? If not then don't send the sms
-//					if(phone_number[0] != '\0')
-//					{
-//						// Send the text!!
-//						/*uart_command_state = CommandStatePrepareWarningSMS;
-//						tx_buffer_reset();
-//						strcpy(tx_buffer, "AT+CMGS=\"");
-//						strcat(tx_buffer, phone_number);
-//						strcat(tx_buffer, "\"\r\n");
-//						uart_send_command();
-//
-//						sent_text = 1;*/
-//					}
-//				}
-//			}
-//		}
+		if(battery_charge > BATTERY_THRESHOLD_HIGH || (battery_charge > BATTERY_THRESHOLD_LOW && battery_can_drain))
+      pump_active = 1;
+		else
+		{
+			pump_active = 0;
+
+			if(get_water_level(floatswitches, 5) >= 2)
+			{
+				// There is not enough charge and too much water, notify over text
+				if(sent_text == 0 && uart_command_state == CommandStateIdle)
+				{
+				  LED_PORT_OUT |= LED_MSP; // red LED on
+
+					// Is there a phone number programmed? If not then don't send the sms
+					if(phone_number[0] != '\0')
+					{
+						// Send the text!!
+						uart_command_state = CommandStatePrepareWarningSMS;
+						tx_buffer_reset();
+						strcpy(tx_buffer, "AT+CMGS=\"");
+						strcat(tx_buffer, phone_number);
+						strcat(tx_buffer, "\"\r\n");
+						uart_send_command();
+
+						sent_text = 1;
+					}
+				}
+			}
+		}
 	}
 	else // No water
 		pump_active = 0;
@@ -577,7 +648,7 @@ __interrupt void timerA0_interrupt_handler()
 __interrupt void timerA1_interrupt_handler()
 {
 	// Stop timer
-	TA1CTL = TACLR;
+	TA1CTL |= MC__STOP;
 
 	// Set gsm power output back to input/floating mode
 	GSM_PORT_DIR &= ~GSM_POWER_CONTROL;
@@ -586,9 +657,19 @@ __interrupt void timerA1_interrupt_handler()
 #pragma vector=TIMER2_A0_VECTOR
 __interrupt void timerA2_interrupt_handler() // for TA2CCR0 only
 {
-  // Finished waiting, now try again and send the command
-  uart_send_command();
-  LPM2_EXIT;
+  if(tryagain_timeelapsed >= 8) // if TIMEOUT_SMS is 15 seconds then this is 2 minutes (8*15 sec)
+  {
+    // Reset time counter and stop timer
+    TA2CTL |= MC__STOP;
+    tryagain_timeelapsed = 0;
+
+    // Finished waiting, now try again and send the command
+    LED_PORT_OUT &= ~LED_MSP;
+    uart_send_command();
+    LPM2_EXIT;
+  }
+  else
+    tryagain_timeelapsed++;
 }
 
 #pragma vector=ADC12_VECTOR

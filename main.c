@@ -3,6 +3,7 @@
 #include "uart.h"
 #include "adc.h"
 #include "flash.h"
+#include "rtc.h"
 #include <stdbool.h>
 #include <string.h>
 
@@ -64,8 +65,8 @@ int main(void)
   PUMPSOLAR_PORT_OUT &= ~(PUMP_CONTROL | SOLARPANEL_CONTROL);
 
   // Set up msp430 LEDs
-  LED_PORT_DIR |= LED_MSP;
-  LED_PORT_OUT &= ~LED_MSP;
+  LED_PORT_DIR |= (LED_MSP | LED_MSP_2);
+  LED_PORT_OUT &= ~(LED_MSP | LED_MSP_2);
 //  P1DIR |= LED_MSP;
 //    P4DIR |= LED_MSP_2;
 //  P1OUT &= ~LED_MSP;
@@ -119,6 +120,8 @@ int main(void)
   TA0CCTL0 = CCIE; // enable capture/compare interrupt
   TA0CCR0 = 4096; // reduces rate to 1 times/sec
   TA0CTL |= MC__UP; // start the timer in up mode (counts to TA0CCR0 then resets to 0)
+
+  rtc_initialize();
 
   // Turn CPU off
   LPM0;

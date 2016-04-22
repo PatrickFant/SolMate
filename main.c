@@ -22,6 +22,7 @@ volatile char battery_can_drain; // 0 -> need to wait for bat to charge to use p
 
 // Keep track of time
 volatile char tryagain_timeelapsed; // counts units of time (we can specify how long the units are)
+volatile unsigned long last_sent_warningtext; // the time when we last sent out a warning text message
 
 // Toggles power for the GSM module.
 void toggle_gsm_power(void);
@@ -49,6 +50,8 @@ int main(void)
   battery_charge = 0;
   solarpanel_voltage = 0;
   pump_active = 0;
+  tryagain_timeelapsed = 0;
+  last_sent_warningtext = 0;
 
   // Read in the saved phone number from memory, if it is there
   memset(phone_number, '\0', MAX_PHONE_LENGTH);
@@ -121,6 +124,7 @@ int main(void)
   TA0CCR0 = 4096; // reduces rate to 1 times/sec
   TA0CTL |= MC__UP; // start the timer in up mode (counts to TA0CCR0 then resets to 0)
 
+  // start the clock
   rtc_initialize();
 
   // Turn CPU off
@@ -352,7 +356,12 @@ int main(void)
           else // Unrecognized text
           {
             LED_PORT_OUT &= ~LED_MSP;
-            uart_enter_idle_mode();
+
+            // Delete all stored messages.
+            uart_command_state = CommandStateDeleteSMS;
+            tx_buffer_reset();
+            strcpy(tx_buffer, "AT+CMGD=1,4\r\n");
+            uart_send_command();
           }
         }
         else
@@ -581,6 +590,11 @@ int get_water_level(char switch_states, int number_of_switches)
 #pragma vector=TIMER0_A0_VECTOR
 __interrupt void timerA0_interrupt_handler()
 {
+  // Get the current time (seconds since the msp started)
+  unsigned long current_time = RTCTIM1;
+  current_time <<= 16;
+  current_time += RTCTIM0;
+
 	// Check the switches
 	floatswitches = 0;
 	floatswitches |= (P1IN & FLOATSWITCH_0) ? 0x1 : 0; // false means ground -> switch NOT active
@@ -596,7 +610,7 @@ __interrupt void timerA0_interrupt_handler()
 	  battery_can_drain = 0;
 
 	// Check water depth
-	if(floatswitches > 0)// || water_depth > 70) // water depth values go from 0 to 255
+	if(floatswitches > 0)
 	{
 		if(battery_charge > BATTERY_THRESHOLD_HIGH || (battery_charge > BATTERY_THRESHOLD_LOW && battery_can_drain))
       pump_active = 1;
@@ -607,7 +621,8 @@ __interrupt void timerA0_interrupt_handler()
 			if(get_water_level(floatswitches, 5) >= 2)
 			{
 				// There is not enough charge and too much water, notify over text
-				if(sent_text == 0 && uart_command_state == CommandStateIdle)
+			  // 0x15180 is 86400 (seconds)
+				if(uart_command_state == CommandStateIdle && current_time - last_sent_warningtext > 0x15180)
 				{
 				  LED_PORT_OUT |= LED_MSP; // red LED on
 
@@ -622,7 +637,8 @@ __interrupt void timerA0_interrupt_handler()
 						strcat(tx_buffer, "\"\r\n");
 						uart_send_command();
 
-						sent_text = 1;
+						// save the current time
+						last_sent_warningtext = current_time;
 					}
 				}
 			}

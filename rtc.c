@@ -15,9 +15,9 @@ void rtc_initialize()
   RTCPS0CTL |= RT0PSDIV_7; // divide ACLK by /256
   RTCPS1CTL |= RT1PSDIV_6 | RT1SSEL_2; // use RT0PS for clock input, divide by 128
 
-  // Reset the time
-  RTCTIM0 = 0;
-  RTCTIM1 = 0;
+  // Reset the time to a day in (86400 seconds -> 0x15180)
+  RTCTIM0 = 0x5180; // low 16 bits
+  RTCTIM1 = 0x1;    // high 16 bits
 
   // Start all the timers
   RTCPS0CTL &= ~RT0PSHOLD;
